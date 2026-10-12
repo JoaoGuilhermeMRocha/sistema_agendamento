@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Barbeiros | Santiago Barbearia</title>
+  <link rel="stylesheet" href="/header.css">
+  <link rel="stylesheet" href="/barbeiros.css">
+  <script src="/barbeiros.js" defer></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="site-header__brand" href="/agendar">Santiago Barbearia</a>
+      <nav class="site-header__nav" aria-label="Navegação principal">
+        <a href="/agendar">Agendar</a>
+        <a href="/loja">Loja</a>
+        <a href="/barbeiros" aria-current="page">Barbeiros</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="dashboard">
+    <div class="dashboard__intro">
+      <h1>Painel dos barbeiros</h1>
+      <p>Solicitações primeiro; agenda e atendimento manual logo abaixo.</p>
+    </div>
+
+    <p class="demo-banner">
+      <strong>Demonstração local, sem login:</strong> use apenas dados fictícios. As alterações
+      somem ao recarregar, não aparecem nas outras páginas e não enviam mensagens.
+      Não publique este painel para uso real sem autenticação e backend.
+    </p>
+
+    <section class="panel" aria-labelledby="requests-title">
+      <div class="panel__heading">
+        <h2 id="requests-title">Solicitações <span id="pendingCount" class="badge">0</span></h2>
+        <p>Aprove ou recuse as pré-reservas ilustrativas.</p>
+      </div>
+      <div id="requestList" class="item-list"></div>
+      <p id="requestStatus" class="status" role="status"></p>
+    </section>
+
+    <section class="panel" aria-labelledby="reminder-title">
+      <div class="panel__heading">
+        <h2 id="reminder-title">Lembrete para enviar</h2>
+        <span class="badge">Envio manual</span>
+      </div>
+      <p>Mensagem ilustrativa; confira os dados antes de enviá-la pelo WhatsApp.</p>
+      <button id="copyReminder" class="button" type="button">Copiar mensagem</button>
+      <div id="reminderText" class="reminder" hidden></div>
+      <p id="reminderStatus" class="status" role="status"></p>
+    </section>
+
+    <section class="panel" aria-labelledby="calendar-title">
+      <div class="calendar-toolbar">
+        <h2 id="calendar-title">Calendário</h2>
+        <div class="button-row">
+          <button id="previousMonth" class="button" type="button" aria-label="Mês anterior">←</button>
+          <button id="currentMonth" class="button" type="button">Hoje</button>
+          <button id="nextMonth" class="button" type="button" aria-label="Próximo mês">→</button>
+        </div>
+      </div>
+      <h3 id="displayedMonth" class="calendar-month"></h3>
+      <div class="calendar-weekdays" aria-hidden="true">
+        <span>DOM</span><span>SEG</span><span>TER</span><span>QUA</span><span>QUI</span><span>SEX</span><span>SÁB</span>
+      </div>
+      <div id="calendarGrid" class="calendar-grid" aria-label="Agenda do mês"></div>
+      <div id="bookingDetails" class="booking-details" aria-live="polite" hidden></div>
+      <p class="help-text">Toque em um agendamento para ver detalhes ou excluir datas. Nenhuma exclusão avisa o cliente.</p>
+    </section>
+
+    <details class="panel disclosure">
+      <summary>Adicionar agendamento manual</summary>
+      <p>Registre um horário combinado diretamente com o cliente. Use dados fictícios.</p>
+      <form id="manualBookingForm">
+        <div class="form-grid">
+          <label>Nome do cliente <input name="name" maxlength="80" required></label>
+          <label>WhatsApp com DDD <input name="phone" type="tel" maxlength="20" required></label>
+          <label>Serviço <input name="service" maxlength="80" required></label>
+          <label>Profissional <select name="professional"><option>Santiago</option><option>Damigo</option></select></label>
+          <label>Data <input name="date" type="date" required></label>
+          <label>Horário <input name="time" type="time" required></label>
+          <label>Duração em minutos <input name="duration" type="number" min="1" max="480" value="30" required></label>
+          <label>Repetição
+            <select name="frequency">
+              <option value="none">Somente esta data</option>
+              <option value="weekly">Toda semana · 4 datas</option>
+              <option value="fortnightly">A cada 15 dias · 4 datas</option>
+              <option value="monthly">Todo mês · 4 datas</option>
+            </select>
+          </label>
+        </div>
+        <button class="button button--primary" type="submit">Adicionar ao calendário</button>
+        <p id="manualBookingStatus" class="status" role="status"></p>
+      </form>
+    </details>
+
+    <details class="panel disclosure">
+      <summary>Ausências dos profissionais</summary>
+      <p>Folga ou férias de dia inteiro; informe as duas horas para ausência parcial.</p>
+      <form id="absenceForm">
+        <div class="form-grid">
+          <label>Profissional <select name="professional"><option>Santiago</option><option>Damigo</option></select></label>
+          <label>Primeiro dia <input name="startDate" type="date" required></label>
+          <label>Último dia <input name="endDate" type="date" required></label>
+          <label>Hora inicial, opcional <input name="startTime" type="time"></label>
+          <label>Hora final, opcional <input name="endTime" type="time"></label>
+        </div>
+        <button class="button button--primary" type="submit">Registrar ausência</button>
+        <p id="absenceStatus" class="status" role="status"></p>
+      </form>
+      <div id="absenceList" class="item-list"></div>
+    </details>
+
+    <details class="panel disclosure">
+      <summary>Configurações da loja</summary>
+      <p>Expediente e almoço são usados para verificar novos horários. Domingo e segunda permanecem fechados nesta demonstração.</p>
+      <form id="openingHoursForm">
+        <div class="form-grid">
+          <label>Abertura <input name="opening" type="time" value="09:00" required></label>
+          <label>Fechamento <input name="closing" type="time" value="18:00" required></label>
+          <label>Início do almoço <input name="lunchStart" type="time" value="12:00"></label>
+          <label>Fim do almoço <input name="lunchEnd" type="time" value="13:00"></label>
+        </div>
+        <button class="button button--primary" type="submit">Salvar horários na demonstração</button>
+        <p id="openingHoursStatus" class="status" role="status"></p>
+      </form>
+
+      <hr class="section-divider">
+      <h3>Bloqueio excepcional</h3>
+      <p>Feriado ou pausa numa data específica. Deixe as horas vazias para bloquear o dia inteiro.</p>
+      <form id="blockForm">
+        <div class="form-grid">
+          <label>Data <input name="date" type="date" required></label>
+          <label>Motivo <input name="reason" maxlength="60" required></label>
+          <label>Hora inicial, opcional <input name="startTime" type="time"></label>
+          <label>Hora final, opcional <input name="endTime" type="time"></label>
+        </div>
+        <button class="button button--primary" type="submit">Adicionar bloqueio</button>
+        <p id="blockStatus" class="status" role="status"></p>
+      </form>
+      <div id="blockList" class="item-list"></div>
+      <p class="help-text">Alterar horários ou criar bloqueios não cancela agendamentos anteriores; confira-os manualmente.</p>
+    </details>
+
+    <details class="panel disclosure">
+      <summary>Produtos da vitrine</summary>
+      <p>Produtos cadastrados aqui aparecem somente neste painel, não na página independente da loja.</p>
+      <form id="productForm">
+        <div class="form-grid">
+          <label>Produto <input name="name" maxlength="80" required></label>
+          <label>Preço (R$) <input name="price" type="number" min="0.01" step="0.01" required></label>
+          <label>Foto opcional: JPG, PNG ou WebP, até 5 MB
+            <input name="photo" type="file" accept="image/jpeg,image/png,image/webp">
+          </label>
+        </div>
+        <button class="button button--primary" type="submit">Adicionar produto</button>
+        <p id="productStatus" class="status" role="status"></p>
+      </form>
+      <div id="productList" class="item-list"></div>
+    </details>
+  </main>
+</body>
+</html>

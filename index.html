@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="pt-BR">
+<head><script src="https://myhub.ia.br/canvas-vendor/tailwind.js"></script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agendar | Santiago Barbearia</title>
+  <link rel="stylesheet" href="/header.css">
+  <link rel="stylesheet" href="/agendar.css">
+  <script src="/agendar.js" defer></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="site-header__brand" href="/agendar.html">Santiago Barbearia</a>
+      <nav class="site-header__nav" aria-label="Navegação principal">
+        <a href="/agendar.html" aria-current="page">Agendar</a>
+        <a href="/loja.html">Loja</a>
+        <a href="/barbeiros.html">Barbeiros</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="poster" aria-label="Apresentação da Santiago Barbearia">
+      <div class="poster__frame">
+        <p class="poster__eyebrow">Um bom corte merece seu tempo</p>
+        <div class="poster__rule" aria-hidden="true"></div>
+        <h1 class="poster__name">Santiago <span>Barbearia</span></h1>
+        <div class="poster__rule" aria-hidden="true"></div>
+        <p class="poster__tagline">Seu próximo horário começa aqui</p>
+      </div>
+    </section>
+
+    <section class="booking-page" aria-labelledby="booking-title">
+      <div class="booking-page__intro">
+        <p class="eyebrow">Agendamento · demonstração local</p>
+        <h2 id="booking-title">Seu próximo corte começa aqui.</h2>
+        <p>Escolha os serviços, o profissional e um horário para simular uma pré-reserva.</p>
+      </div>
+
+      <div class="booking-layout">
+        <div class="booking-form">
+          <section class="booking-step" aria-labelledby="services-title">
+            <h3 id="services-title">1. Quais serviços você quer?</h3>
+            <div id="serviceOptions" class="choice-grid" aria-label="Serviços">
+              <button type="button" class="choice is-selected" data-service="Cabelo" aria-pressed="true">Cabelo - R$30,00 <small>30 min</small></button>
+              <button type="button" class="choice" data-service="Barba" aria-pressed="false">Barba - R$25,00 <small>30 min</small></button>
+              <button type="button" class="choice" data-service="Sobrancelha" aria-pressed="false">Sobrancelha - R$20,00 <small>15 min</small></button>
+            </div>
+          </section>
+
+          <section class="booking-step" aria-labelledby="professionals-title">
+            <h3 id="professionals-title">2. Profissional <small>(opcional)</small></h3>
+            <div id="professionalOptions" class="choice-grid" aria-label="Profissional">
+              <button type="button" class="choice" data-professional="Santiago" aria-pressed="false">Santiago</button>
+              <button type="button" class="choice" data-professional="Damigo" aria-pressed="false">Damigo</button>
+            </div>
+          </section>
+
+          <section class="booking-step" aria-labelledby="dates-title">
+            <h3 id="dates-title">3. Quando fica bom?</h3>
+            <p class="help-text">Escolha um dia nos próximos 14 dias e depois um horário disponível.</p>
+            <div id="availableDates" class="date-list" aria-label="Datas disponíveis"></div>
+            <div id="availableTimes" class="time-list" aria-label="Horários disponíveis"></div>
+            <p id="availabilityMessage" class="help-text" role="status"></p>
+          </section>
+        </div>
+
+        <aside class="booking-sidebar" aria-labelledby="summary-title">
+          <div class="recurrence-control">
+            <label><input id="repeatBooking" type="checkbox"> Repetir este horário</label>
+            <label id="frequencyField" class="recurrence-control__frequency" hidden>
+              Frequência
+              <select id="bookingFrequency">
+                <option value="weekly">Toda semana · 4 datas</option>
+                <option value="fortnightly">A cada 15 dias · 4 datas</option>
+                <option value="monthly">Todo mês · 4 datas</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="booking-summary">
+            <p class="eyebrow">Sua solicitação</p>
+            <h3 id="summary-title">Um horário do seu jeito.</h3>
+            <dl>
+              <div><dt>Serviços</dt><dd id="summaryServices"></dd></div>
+              <div><dt>Profissional</dt><dd id="summaryProfessional"></dd></div>
+              <div><dt>Quando</dt><dd id="summaryDate"></dd></div>
+              <div><dt>Repetição</dt><dd id="summaryFrequency"></dd></div>
+            </dl>
+
+            <p class="booking-summary__notice">
+              <strong>Pré-reserva não é confirmação.</strong> Esta demonstração não envia a solicitação
+              à barbearia nem dispara mensagens pelo WhatsApp.
+            </p>
+
+            <div id="contactFields" class="contact-fields" hidden>
+              <label>Seu nome <input id="customerName" maxlength="80" autocomplete="name"></label>
+              <label>WhatsApp com DDD <input id="customerPhone" type="tel" maxlength="20" inputmode="tel" autocomplete="tel"></label>
+            </div>
+            <button id="submitRequest" class="primary-button" type="button" disabled>Escolha um dia</button>
+          </div>
+          <p class="demo-warning">Use somente dados fictícios. Tudo se perde ao recarregar esta página.</p>
+          <p id="requestFeedback" class="feedback" role="status"></p>
+        </aside>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
