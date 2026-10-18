@@ -1,556 +1,677 @@
-"use strict";
+import { config } from "./config.js";
+import {
+  atendimentosDoDia, conflitoDoAtendimento, conflitosFuturos, daChave, descreverMensal, descreverRepeticao, diaFechado, formatarData, formatarMoeda,
+  hoje, horaTexto, horariosLivres, minutos, paraChave, profissionalPorId, somarDias, somarServicos
+} from "./agenda.js";
+import {
+  aoMudar, apagarTudo, cancelarData, carregar, criarAgendamento, criarAusencia, criarBloqueio,
+  atualizarProduto, criarProduto, encerrarRepeticao, removerAusencia, removerBloqueio, removerProduto, salvarExpediente
+} from "./dados.js";
+import {
+  $, aplicarIcones, avisar, capitalizar, confirmarNoBotao, el, formatarTelefone, icone, linkWhatsApp,
+  mascararTelefone, preencherMarca
+} from "./ui.js";
 
-const $ = selector => document.querySelector(selector);
-const pad = value => String(value).padStart(2, "0");
-const toKey = date => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-const fromKey = key => {
-  const [year, month, day] = key.split("-").map(Number);
-  return new Date(year, month - 1, day);
-};
-const formatDate = key => new Intl.DateTimeFormat("pt-BR").format(fromKey(key));
-const minutes = time => Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5));
-const overlaps = (start, end, otherStart, otherEnd) => start < otherEnd && otherStart < end;
-const validKey = key => /^\d{4}-\d{2}-\d{2}$/.test(key) && toKey(fromKey(key)) === key;
-const currency = value => new Intl.NumberFormat("pt-BR", {
-  style: "currency", currency: "BRL"
-}).format(value);
+const DIAS_DA_SEMANA = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
+const ORDEM_DA_SEMANA = [1, 2, 3, 4, 5, 6, 0];
 
-const state = {
-  displayedYear: new Date().getFullYear(),
-  displayedMonth: new Date().getMonth(),
-  nextBookingId: 10,
-  nextSeriesId: 2,
-  nextSettingId: 3,
-  hours: { opening: "09:00", closing: "18:00", lunchStart: "12:00", lunchEnd: "13:00" },
-  absences: [],
-  blocks: [],
-  products: [
-    { id: 1, name: "Pomada modeladora (exemplo)", price: 35, photoUrl: null },
-    { id: 2, name: "Óleo para barba (exemplo)", price: 42, photoUrl: null }
-  ],
-  bookings: [],
-  requests: []
+let estado = carregar();
+const visao = {
+  filtro: null,
+  dia: hoje(),
+  ano: new Date().getFullYear(),
+  mes: new Date().getMonth(),
+  profissionalExpediente: config.profissionais[0].id
 };
 
-function plusDays(key, days) {
-  const date = fromKey(key);
-  date.setDate(date.getDate() + days);
-  return toKey(date);
-}
+const indiceProfissional = id => config.profissionais.findIndex(pessoa => pessoa.id === id);
+const nomeProfissional = id => profissionalPorId(id)?.nome ?? "—";
+const opcoesProfissionais = () => config.profissionais.map(pessoa => el("option", { value: pessoa.id }, pessoa.nome));
 
-const today = toKey(new Date());
-state.bookings.push({
-  id: 1, date: plusDays(today, 1), time: "09:00",
-  name: "Pedro (exemplo)", phone: "(00) 00000-0000",
-  service: "Barba", professional: "Damigo", duration: 30, seriesId: null
-});
-for (const [index, days] of [2, 9, 16, 23].entries()) {
-  state.bookings.push({
-    id: index + 2, date: plusDays(today, days), time: "14:00",
-    name: "Cliente recorrente (exemplo)", phone: "(00) 00000-0000",
-    service: "Cabelo", professional: "Santiago", duration: 30, seriesId: 1
-  });
-}
-state.requests.push({
-  id: 1, dates: [plusDays(today, 1)], time: "10:00",
-  name: "Marina (exemplo)", phone: "(00) 00000-0000",
-  service: "Cabelo", professional: "Santiago", duration: 30
-});
-
-function recurrenceDates(firstKey, frequency) {
-  if (frequency === "none") return [firstKey];
-  if (frequency === "weekly" || frequency === "fortnightly") {
-    const days = frequency === "weekly" ? 7 : 14;
-    return Array.from({ length: 4 }, (_, index) => plusDays(firstKey, index * days));
+function resultado(retorno, mensagem, alvoErro) {
+  if (alvoErro) alvoErro.textContent = retorno.ok ? "" : retorno.erro;
+  if (!retorno.ok) {
+    avisar(retorno.erro, "erro");
+    return false;
   }
-  if (frequency !== "monthly") return null;
-
-  const first = fromKey(firstKey);
-  return Array.from({ length: 4 }, (_, index) => {
-    const month = new Date(first.getFullYear(), first.getMonth() + index, 1);
-    const lastDay = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
-    if (first.getDate() > lastDay) return null;
-    month.setDate(first.getDate());
-    return toKey(month);
-  });
+  estado = carregar();
+  avisar(mensagem);
+  return true;
 }
 
-function isAvailable(dates, time, duration, professional, ignoredRequestId = null) {
-  if (!Array.isArray(dates) || !dates.length ||
-      !["Santiago", "Damigo"].includes(professional) ||
-      !/^\d{2}:\d{2}$/.test(time) ||
-      !Number.isInteger(duration) || duration < 1 || duration > 480) return false;
+/* Abas */
 
-  const start = minutes(time);
-  const end = start + duration;
-  const { opening, closing, lunchStart, lunchEnd } = state.hours;
-  if (start < minutes(opening) || end > minutes(closing) ||
-      (lunchStart && overlaps(start, end, minutes(lunchStart), minutes(lunchEnd)))) return false;
-
-  return dates.every(key => {
-    const now = new Date();
-    if (!validKey(key) || [0, 1].includes(fromKey(key).getDay()) ||
-        key < toKey(now) ||
-        (key === toKey(now) && start <= now.getHours() * 60 + now.getMinutes())) return false;
-
-    if (state.blocks.some(block => block.date === key &&
-        (!block.startTime || overlaps(start, end, minutes(block.startTime), minutes(block.endTime))))) return false;
-
-    if (state.absences.some(absence =>
-        absence.professional === professional && key >= absence.startDate && key <= absence.endDate &&
-        (!absence.startTime || overlaps(start, end, minutes(absence.startTime), minutes(absence.endTime))))) return false;
-
-    if (state.bookings.some(booking =>
-        booking.date === key && booking.professional === professional &&
-        overlaps(start, end, minutes(booking.time), minutes(booking.time) + booking.duration))) return false;
-
-    return !state.requests.some(request =>
-      request.id !== ignoredRequestId && request.professional === professional &&
-      request.dates.includes(key) &&
-      overlaps(start, end, minutes(request.time), minutes(request.time) + request.duration)
-    );
-  });
-}
-
-function showMonth(key) {
-  const date = fromKey(key);
-  state.displayedYear = date.getFullYear();
-  state.displayedMonth = date.getMonth();
-  renderCalendar();
-}
-
-function makeButton(label, action, className = "button") {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = className;
-  button.textContent = label;
-  button.addEventListener("click", action);
-  return button;
-}
-
-function renderRequests() {
-  const list = $("#requestList");
-  list.replaceChildren();
-  $("#pendingCount").textContent = state.requests.length;
-
-  if (!state.requests.length) {
-    const empty = document.createElement("p");
-    empty.textContent = "Nenhuma solicitação pendente.";
-    list.append(empty);
-    return;
+function abrirAba(nome) {
+  const aba = document.querySelector(`[data-secao="${nome}"]`) ? nome : "agenda";
+  for (const secao of document.querySelectorAll("[data-secao]")) secao.hidden = secao.dataset.secao !== aba;
+  for (const link of document.querySelectorAll("[data-aba]")) {
+    if (link.dataset.aba === aba) link.setAttribute("aria-current", "page");
+    else link.removeAttribute("aria-current");
   }
-
-  for (const request of state.requests) {
-    const card = document.createElement("article");
-    card.className = "list-item";
-
-    const heading = document.createElement("h3");
-    heading.textContent = `${request.name} · ${request.service}`;
-    const description = document.createElement("p");
-    description.textContent =
-      `${request.dates.map(formatDate).join(", ")} às ${request.time} · ` +
-      `${request.professional} · ${request.duration} min · WhatsApp: ${request.phone}`;
-
-    const actions = document.createElement("div");
-    actions.className = "button-row";
-    actions.append(
-      makeButton("Aprovar", () => decideRequest(request, true), "button button--primary"),
-      makeButton("Recusar", () => decideRequest(request, false), "button button--danger")
-    );
-    card.append(heading, description, actions);
-    list.append(card);
-  }
+  if (aba === "novo") atualizarHorariosNovo();
+  window.scrollTo({ top: 0 });
 }
 
-function decideRequest(request, approved) {
-  if (!state.requests.includes(request)) return;
-  if (approved && !isAvailable(
-      request.dates, request.time, request.duration, request.professional, request.id
-  )) {
-    $("#requestStatus").textContent = "Conflito de horário: não foi possível aprovar.";
-    return;
-  }
+window.addEventListener("hashchange", () => abrirAba(location.hash.slice(1)));
 
-  state.requests.splice(state.requests.indexOf(request), 1);
-  if (approved) {
-    const seriesId = request.dates.length > 1 ? state.nextSeriesId++ : null;
-    for (const date of request.dates) {
-      state.bookings.push({
-        id: state.nextBookingId++, date, time: request.time, duration: request.duration,
-        name: request.name, phone: request.phone, service: request.service,
-        professional: request.professional, seriesId
-      });
+/* Agenda: filtro, calendário e lista do dia */
+
+function desenharFiltro() {
+  const opcoes = [{ id: null, nome: "Todos" }, ...config.profissionais];
+  $("#filtroAgenda").replaceChildren(...opcoes.map(pessoa => el("button", {
+    type: "button",
+    class: "chip",
+    "aria-pressed": String(visao.filtro === pessoa.id),
+    onclick: () => {
+      visao.filtro = pessoa.id;
+      desenharAgenda();
     }
-    showMonth(request.dates[0]);
-  }
-
-  $("#requestStatus").textContent = approved
-    ? "Aprovado somente nesta demonstração. Avise o cliente manualmente."
-    : "Recusado somente nesta demonstração. Avise o cliente manualmente.";
-  renderRequests();
+  }, pessoa.nome)));
 }
 
-function renderCalendar() {
-  const grid = $("#calendarGrid");
-  grid.replaceChildren();
-  $("#bookingDetails").hidden = true;
-  $("#displayedMonth").textContent = new Intl.DateTimeFormat("pt-BR", {
-    month: "long", year: "numeric"
-  }).format(new Date(state.displayedYear, state.displayedMonth, 1));
+const doFiltro = agendamento => !visao.filtro || agendamento.profissionalId === visao.filtro;
 
-  const firstWeekday = new Date(state.displayedYear, state.displayedMonth, 1).getDay();
-  const daysInMonth = new Date(state.displayedYear, state.displayedMonth + 1, 0).getDate();
+function desenharCalendario() {
+  const primeiro = new Date(visao.ano, visao.mes, 1);
+  const totalDias = new Date(visao.ano, visao.mes + 1, 0).getDate();
+  $("#mesTitulo").textContent = capitalizar(new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(primeiro));
 
-  for (let index = 0; index < firstWeekday; index++) {
-    const empty = document.createElement("div");
-    empty.className = "calendar-day calendar-day--empty";
-    empty.setAttribute("aria-hidden", "true");
-    grid.append(empty);
-  }
+  const vazios = Array.from({ length: primeiro.getDay() }, () => el("span", { "aria-hidden": "true" }));
+  const dias = Array.from({ length: totalDias }, (_, indice) => {
+    const data = paraChave(new Date(visao.ano, visao.mes, indice + 1));
+    const doDia = atendimentosDoDia(estado, data).filter(doFiltro);
+    const quantidade = doDia.length;
+    const temConflito = data >= hoje() && doDia.some(item => conflitoDoAtendimento(estado, item, data));
+    const classes = ["calendario__dia"];
+    if (data === hoje()) classes.push("calendario__dia--hoje");
+    if (data < hoje()) classes.push("calendario__dia--passado");
+    if (diaFechado(estado, data, visao.filtro)) classes.push("calendario__dia--fechado");
+    if (temConflito) classes.push("calendario__dia--conflito");
 
-  for (let day = 1; day <= daysInMonth; day++) {
-    const key = toKey(new Date(state.displayedYear, state.displayedMonth, day));
-    const cell = document.createElement("div");
-    cell.className = `calendar-day${key === toKey(new Date()) ? " calendar-day--today" : ""}`;
-
-    const number = document.createElement("strong");
-    number.textContent = day;
-    cell.append(number);
-
-    state.bookings
-      .filter(booking => booking.date === key)
-      .sort((left, right) => left.time.localeCompare(right.time))
-      .forEach(booking => {
-        const entry = makeButton(
-          `${booking.time} ${booking.name}${booking.seriesId ? " · recorrente" : ""}`,
-          () => showBookingDetails(booking.id),
-          "calendar-entry"
-        );
-        entry.setAttribute("aria-label", `${formatDate(key)}, ${booking.time}, ${booking.name}. Ver detalhes`);
-        cell.append(entry);
-      });
-
-    state.absences.filter(item => key >= item.startDate && key <= item.endDate)
-      .forEach(item => appendCalendarNote(
-        cell, `${item.professional} ausente${item.startTime ? ` · ${item.startTime}–${item.endTime}` : " · dia inteiro"}`
-      ));
-
-    state.blocks.filter(item => item.date === key)
-      .forEach(item => appendCalendarNote(
-        cell, `${item.reason}${item.startTime ? ` · ${item.startTime}–${item.endTime}` : " · dia inteiro"}`
-      ));
-
-    grid.append(cell);
-  }
-}
-
-function appendCalendarNote(cell, text) {
-  const note = document.createElement("span");
-  note.className = "calendar-entry calendar-entry--note";
-  note.textContent = text;
-  cell.append(note);
-}
-
-function removeBookings(ids) {
-  state.bookings = state.bookings.filter(booking => !ids.has(booking.id));
-  renderCalendar();
-}
-
-function showBookingDetails(id) {
-  const booking = state.bookings.find(item => item.id === id);
-  if (!booking) return;
-
-  const panel = $("#bookingDetails");
-  panel.replaceChildren();
-  panel.hidden = false;
-
-  const title = document.createElement("h3");
-  title.textContent = `${booking.name} · ${booking.service}`;
-  const description = document.createElement("p");
-  description.textContent =
-    `${formatDate(booking.date)} às ${booking.time} · ${booking.duration} min · ` +
-    `${booking.professional} · WhatsApp: ${booking.phone}`;
-  const actions = document.createElement("div");
-  actions.className = "button-row";
-
-  if (booking.seriesId === null) {
-    actions.append(makeButton("Excluir agendamento", () => {
-      if (window.confirm("Excluir este agendamento? O cliente não será avisado.")) {
-        removeBookings(new Set([booking.id]));
+    return el("button", {
+      type: "button",
+      class: classes.join(" "),
+      "aria-pressed": String(data === visao.dia),
+      "aria-label": `${formatarData(data, { day: "numeric", month: "long" })}: ${quantidade ? `${quantidade} atendimento(s)` : "nenhum atendimento"}${temConflito ? ", com conflito" : ""}`,
+      onclick: () => {
+        visao.dia = data;
+        desenharAgenda();
+        if (matchMedia("(max-width: 899px)").matches) $(".dia-agenda").scrollIntoView({ block: "start" });
       }
-    }, "button button--danger"));
-  } else {
-    const upcoming = state.bookings
-      .filter(item => item.seriesId === booking.seriesId && item.date >= toKey(new Date()))
-      .sort((left, right) => left.date.localeCompare(right.date) || left.time.localeCompare(right.time));
-
-    const next = upcoming[0];
-    const removeNext = makeButton("Excluir próximo agendamento", () => {
-      if (next && window.confirm(`Excluir somente ${formatDate(next.date)} às ${next.time}? O cliente não será avisado.`)) {
-        removeBookings(new Set([next.id]));
-      }
-    }, "button button--danger");
-    removeNext.disabled = !next;
-
-    const removeSeries = makeButton("Excluir recorrência futura", () => {
-      const ids = new Set(upcoming.map(item => item.id));
-      if (ids.size && window.confirm(`Excluir ${ids.size} agendamento(s) de hoje em diante? O cliente não será avisado.`)) {
-        removeBookings(ids);
-      }
-    }, "button button--danger");
-    removeSeries.disabled = !next;
-    actions.append(removeNext, removeSeries);
-  }
-
-  panel.append(title, description, actions);
-}
-
-function changeMonth(offset) {
-  const month = new Date(state.displayedYear, state.displayedMonth + offset, 1);
-  state.displayedYear = month.getFullYear();
-  state.displayedMonth = month.getMonth();
-  renderCalendar();
-}
-
-$("#previousMonth").addEventListener("click", () => changeMonth(-1));
-$("#nextMonth").addEventListener("click", () => changeMonth(1));
-$("#currentMonth").addEventListener("click", () => {
-  const now = new Date();
-  state.displayedYear = now.getFullYear();
-  state.displayedMonth = now.getMonth();
-  renderCalendar();
-});
-
-$("#manualBookingForm").addEventListener("submit", event => {
-  event.preventDefault();
-  const form = event.currentTarget;
-  const values = new FormData(form);
-  const name = String(values.get("name")).trim();
-  const phone = String(values.get("phone")).trim();
-  const service = String(values.get("service")).trim();
-  const professional = String(values.get("professional"));
-  const date = String(values.get("date"));
-  const time = String(values.get("time"));
-  const duration = Number(values.get("duration"));
-  const frequency = String(values.get("frequency"));
-  const status = $("#manualBookingStatus");
-
-  if (!name || !service || !/^\d{10,11}$/.test(phone.replace(/\D/g, "")) ||
-      !validKey(date) || !Number.isInteger(duration) || duration < 1 || duration > 480) {
-    status.textContent = "Confira nome, WhatsApp com DDD, data e duração.";
-    return;
-  }
-
-  const dates = recurrenceDates(date, frequency);
-  if (!dates || dates.some(item => !item)) {
-    status.textContent = "Esta repetição não cabe no mesmo dia dos próximos meses.";
-    return;
-  }
-  if (!isAvailable(dates, time, duration, professional)) {
-    status.textContent = "Alguma data está fechada, bloqueada, no passado ou em conflito.";
-    return;
-  }
-
-  const seriesId = dates.length > 1 ? state.nextSeriesId++ : null;
-  for (const bookingDate of dates) {
-    state.bookings.push({
-      id: state.nextBookingId++, date: bookingDate, time, duration,
-      name, phone, service, professional, seriesId
-    });
-  }
-
-  status.textContent = `${dates.length} agendamento(s) incluído(s) nesta demonstração.`;
-  form.reset();
-  showMonth(date);
-});
-
-function intervalFrom(values) {
-  const startTime = String(values.get("startTime") || "");
-  const endTime = String(values.get("endTime") || "");
-  if (Boolean(startTime) !== Boolean(endTime) ||
-      (startTime && startTime >= endTime)) return null;
-  return { startTime, endTime };
-}
-
-function renderRemovableList(containerSelector, items, describe, removeItem) {
-  const container = $(containerSelector);
-  container.replaceChildren();
-
-  if (!items.length) {
-    const empty = document.createElement("p");
-    empty.textContent = "Nenhum registro nesta demonstração.";
-    container.append(empty);
-    return;
-  }
-
-  for (const item of items) {
-    const row = document.createElement("div");
-    row.className = "list-item";
-    const text = document.createElement("span");
-    text.textContent = describe(item);
-    row.append(text, makeButton("Remover", () => removeItem(item), "button button--danger"));
-    container.append(row);
-  }
-}
-
-function renderAbsences() {
-  renderRemovableList("#absenceList", state.absences,
-    item => `${item.professional} · ${formatDate(item.startDate)} a ${formatDate(item.endDate)} · ` +
-      (item.startTime ? `${item.startTime}–${item.endTime}` : "dia inteiro"),
-    item => {
-      state.absences.splice(state.absences.indexOf(item), 1);
-      renderAbsences();
-      renderCalendar();
-    });
-}
-
-function renderBlocks() {
-  renderRemovableList("#blockList", state.blocks,
-    item => `${formatDate(item.date)} · ${item.reason} · ` +
-      (item.startTime ? `${item.startTime}–${item.endTime}` : "dia inteiro"),
-    item => {
-      state.blocks.splice(state.blocks.indexOf(item), 1);
-      renderBlocks();
-      renderCalendar();
-    });
-}
-
-$("#absenceForm").addEventListener("submit", event => {
-  event.preventDefault();
-  const form = event.currentTarget;
-  const values = new FormData(form);
-  const startDate = String(values.get("startDate"));
-  const endDate = String(values.get("endDate"));
-  const interval = intervalFrom(values);
-
-  if (!validKey(startDate) || !validKey(endDate) || endDate < startDate || !interval) {
-    $("#absenceStatus").textContent = "Confira os dias e, para ausência parcial, informe as duas horas em ordem.";
-    return;
-  }
-
-  state.absences.push({
-    professional: String(values.get("professional")), startDate, endDate, ...interval
+    },
+    el("span", { class: "numeros" }, indice + 1),
+    el("span", { class: "calendario__pontos", "aria-hidden": "true" },
+      Array.from({ length: Math.min(quantidade, 3) }, () => el("i"))));
   });
-  $("#absenceStatus").textContent = "Ausência registrada. Confira manualmente agendamentos anteriores.";
-  form.reset();
-  renderAbsences();
-  showMonth(startDate);
-});
 
-$("#openingHoursForm").addEventListener("submit", event => {
-  event.preventDefault();
-  const values = new FormData(event.currentTarget);
-  const opening = String(values.get("opening"));
-  const closing = String(values.get("closing"));
-  const lunchStart = String(values.get("lunchStart"));
-  const lunchEnd = String(values.get("lunchEnd"));
+  $("#calendario").replaceChildren(...vazios, ...dias);
+}
 
-  if (!opening || !closing || opening >= closing ||
-      Boolean(lunchStart) !== Boolean(lunchEnd) ||
-      (lunchStart && !(opening <= lunchStart && lunchStart < lunchEnd && lunchEnd <= closing))) {
-    $("#openingHoursStatus").textContent = "Confira o expediente e as duas horas do almoço.";
+function rotuloDoDia(data) {
+  const extenso = formatarData(data, { weekday: "long", day: "numeric", month: "long" });
+  return data === hoje() ? `Hoje, ${extenso}` : capitalizar(extenso);
+}
+
+function desenharDia() {
+  const data = visao.dia;
+  const atendimentos = atendimentosDoDia(estado, data).filter(doFiltro);
+  const total = atendimentos.reduce((soma, item) => soma + item.preco, 0);
+  const conflitos = data >= hoje()
+    ? atendimentos.filter(item => conflitoDoAtendimento(estado, item, data)).length : 0;
+
+  $("#diaTitulo").textContent = rotuloDoDia(data);
+  $("#diaResumo").textContent = atendimentos.length
+    ? `${atendimentos.length} ${atendimentos.length === 1 ? "atendimento" : "atendimentos"} · ${formatarMoeda(total)}` +
+      (conflitos ? ` · ${conflitos} para remarcar` : "")
+    : diaFechado(estado, data, visao.filtro) ? "Ninguém trabalha neste dia" : "Nenhum atendimento";
+
+  const avisos = [
+    ...estado.bloqueios.filter(item => item.data === data)
+      .map(item => `${item.motivo} · ${item.horaInicio ? `${item.horaInicio}–${item.horaFim}` : "dia inteiro"}`),
+    ...estado.ausencias
+      .filter(item => data >= item.inicio && data <= item.fim && (!visao.filtro || item.profissionalId === visao.filtro))
+      .map(item => `${nomeProfissional(item.profissionalId)} ausente · ${item.horaInicio ? `${item.horaInicio}–${item.horaFim}` : "dia inteiro"}`)
+  ];
+  $("#diaAvisos").replaceChildren(...avisos.map(texto => el("p", { class: "aviso-dia" }, texto)));
+
+  if (!atendimentos.length) {
+    const fechado = diaFechado(estado, data, visao.filtro);
+    const podeMarcar = data >= hoje() && !fechado;
+    $("#diaLista").replaceChildren(el("li", { class: "vazio" },
+      icone("calendario"),
+      el("strong", {}, data < hoje() ? "Nada registrado neste dia" : fechado ? "Dia de folga" : "Agenda livre"),
+      podeMarcar && el("a", { class: "botao botao--contorno botao--pequeno", href: "#novo", onclick: () => prepararNovo(data) },
+        icone("mais"), "Marcar horário")));
     return;
   }
 
-  Object.assign(state.hours, { opening, closing, lunchStart, lunchEnd });
-  $("#openingHoursStatus").textContent = "Expediente atualizado somente nesta demonstração.";
+  $("#diaLista").replaceChildren(...atendimentos.map((agendamento, indice) => {
+    const { nomes } = somarServicos(agendamento.servicos);
+    const fim = horaTexto(minutos(agendamento.inicio) + agendamento.duracao);
+    const conflito = data >= hoje() && conflitoDoAtendimento(estado, agendamento, data);
+    return el("li", { style: `--atraso: ${Math.min(indice, 10) * 30}ms` }, el("button", {
+      type: "button",
+      class: `atendimento${conflito ? " atendimento--conflito" : ""}`,
+      "data-profissional": indiceProfissional(agendamento.profissionalId) % 4,
+      onclick: () => abrirDetalhe(agendamento.id, data)
+    },
+    el("span", { class: "atendimento__hora numeros" }, agendamento.inicio, el("small", {}, fim)),
+    el("span", { class: "atendimento__corpo" },
+      el("strong", {}, agendamento.cliente.nome),
+      el("span", {}, `${nomes} · ${nomeProfissional(agendamento.profissionalId)}`),
+      conflito && el("span", { class: "atendimento__conflito" }, icone("alerta"), conflito)),
+    el("span", { class: "atendimento__extra" },
+      agendamento.repeticao.frequencia !== "nenhuma" && icone("repetir"),
+      el("span", { class: "numeros" }, formatarMoeda(agendamento.preco)))));
+  }));
+}
+
+function desenharAgenda() {
+  desenharFiltro();
+  desenharCalendario();
+  desenharDia();
+}
+
+function mudarMes(diferenca) {
+  const alvo = new Date(visao.ano, visao.mes + diferenca, 1);
+  visao.ano = alvo.getFullYear();
+  visao.mes = alvo.getMonth();
+  desenharCalendario();
+}
+
+$("#mesAnterior").addEventListener("click", () => mudarMes(-1));
+$("#mesSeguinte").addEventListener("click", () => mudarMes(1));
+$("#irHoje").addEventListener("click", () => {
+  visao.dia = hoje();
+  visao.ano = new Date().getFullYear();
+  visao.mes = new Date().getMonth();
+  desenharAgenda();
 });
 
-$("#blockForm").addEventListener("submit", event => {
-  event.preventDefault();
-  const form = event.currentTarget;
-  const values = new FormData(form);
-  const date = String(values.get("date"));
-  const reason = String(values.get("reason")).trim();
-  const interval = intervalFrom(values);
+/* Detalhe de um atendimento */
 
-  if (!validKey(date) || !reason || !interval) {
-    $("#blockStatus").textContent = "Informe uma data, um motivo e horas em ordem válida.";
-    return;
+function abrirDetalhe(id, data) {
+  const agendamento = estado.agendamentos.find(item => item.id === id);
+  if (!agendamento) return;
+
+  const { nomes, duracao } = somarServicos(agendamento.servicos);
+  const profissional = nomeProfissional(agendamento.profissionalId);
+  const fim = horaTexto(minutos(agendamento.inicio) + agendamento.duracao);
+  const repete = agendamento.repeticao.frequencia !== "nenhuma";
+  const lembrete =
+    `Olá, ${agendamento.cliente.nome.split(" ")[0]}! Passando para lembrar do seu horário na ${config.nome}: ` +
+    `${formatarData(data, { weekday: "long", day: "2-digit", month: "2-digit" })} às ${agendamento.inicio}, ` +
+    `${nomes.toLowerCase()} com ${profissional}. Até lá!`;
+
+  const cancelar = el("button", { type: "button", class: "botao botao--perigo botao--largo" },
+    repete ? "Cancelar só este dia" : "Cancelar atendimento");
+  confirmarNoBotao(cancelar, "Toque de novo para cancelar", () => {
+    if (resultado(cancelarData(id, data), "Atendimento cancelado.")) fecharDetalhe();
+  });
+
+  let encerrar = null;
+  if (repete) {
+    encerrar = el("button", { type: "button", class: "botao botao--perigo botao--largo" }, "Encerrar repetição a partir deste dia");
+    confirmarNoBotao(encerrar, "Toque de novo para encerrar", () => {
+      if (resultado(encerrarRepeticao(id, data), "Repetição encerrada.")) fecharDetalhe();
+    });
   }
 
-  state.blocks.push({ date, reason, ...interval });
-  $("#blockStatus").textContent = "Bloqueio aplicado somente a novos agendamentos desta demonstração.";
-  form.reset();
-  renderBlocks();
-  showMonth(date);
+  const conflito = data >= hoje() && conflitoDoAtendimento(estado, agendamento, data);
+  $("#detalheConteudo").replaceChildren(
+    conflito ? el("p", { class: "detalhe__conflito" }, icone("alerta"),
+      el("span", {}, el("strong", {}, conflito), " Avise o cliente e remarque, ou cancele este dia.")) : "",
+    el("p", { class: "detalhe__quando numeros" },
+      `${capitalizar(formatarData(data, { weekday: "long", day: "numeric", month: "long" }))} · ${agendamento.inicio}–${fim}`),
+    el("h2", { id: "detalheTitulo", class: "detalhe__nome" }, agendamento.cliente.nome),
+    el("dl", { class: "detalhe__lista" },
+      [["Serviços", `${nomes} · ${duracao} min`],
+        ["Profissional", profissional],
+        ["Valor", formatarMoeda(agendamento.preco)],
+        ["WhatsApp", formatarTelefone(agendamento.cliente.telefone)],
+        ["Repetição", descreverRepeticao(agendamento.repeticao, agendamento.data)],
+        ["Marcado", agendamento.origem === "cliente" ? "Pelo cliente, no site" : "Pelo painel"]
+      ].map(([rotulo, valor]) => el("div", {}, el("dt", {}, rotulo), el("dd", {}, valor)))),
+    el("div", { class: "detalhe__acoes" },
+      el("a", {
+        class: "botao botao--destaque botao--largo",
+        href: linkWhatsApp(agendamento.cliente.telefone, lembrete),
+        target: "_blank",
+        rel: "noopener"
+      }, icone("mensagem"), "Enviar lembrete no WhatsApp"),
+      cancelar,
+      encerrar,
+      el("button", { type: "button", class: "botao botao--contorno botao--largo", onclick: fecharDetalhe }, "Fechar")));
+
+  $("#detalhe").showModal();
+}
+
+function fecharDetalhe() {
+  $("#detalhe").close();
+  desenharAgenda();
+}
+
+// Tocar fora da folha fecha.
+$("#detalhe").addEventListener("click", evento => {
+  if (evento.target === evento.currentTarget) $("#detalhe").close();
 });
 
-function renderProducts() {
-  const list = $("#productList");
-  list.replaceChildren();
+/* Novo agendamento pelo painel */
 
-  for (const product of state.products) {
-    const row = document.createElement("div");
-    row.className = "list-item";
+const formNovo = $("#formNovo");
 
-    if (product.photoUrl) {
-      const image = document.createElement("img");
-      image.src = product.photoUrl;
-      image.alt = `Foto de ${product.name}`;
-      row.append(image);
+function desenharFormNovo() {
+  $("#novoServicos").replaceChildren(...config.servicos.map((servico, indice) => el("label", { class: "chip" },
+    el("input", { type: "checkbox", name: "servico", value: servico.id, checked: indice === 0 }),
+    `${servico.nome} · ${formatarMoeda(servico.preco)}`)));
+  $("#novoProfissional").replaceChildren(...opcoesProfissionais());
+  $("#novoData").min = hoje();
+  $("#novoData").value = proximoDiaAberto(hoje());
+  $("#novoVezes").max = config.agenda.maxAtendimentosRepetidos;
+}
+
+function proximoDiaAberto(data) {
+  for (let dia = 0; dia < 14 && diaFechado(estado, data); dia++) data = somarDias(data, 1);
+  return data;
+}
+
+function lerFormNovo() {
+  const valores = new FormData(formNovo);
+  const frequencia = valores.get("frequencia");
+  return {
+    servicos: valores.getAll("servico"),
+    profissionalId: valores.get("profissional"),
+    data: valores.get("data"),
+    repeticao: frequencia === "nenhuma"
+      ? { frequencia, vezes: 1 }
+      : { frequencia, vezes: $("#novoSemFim").checked ? null : Number(valores.get("vezes")) }
+  };
+}
+
+function atualizarHorariosNovo() {
+  const { servicos, profissionalId, data, repeticao } = lerFormNovo();
+  const { duracao, preco } = somarServicos(servicos);
+  const repete = repeticao.frequencia !== "nenhuma";
+
+  $("#novoQuantidade").hidden = !repete;
+  $("#novoVezes").disabled = $("#novoSemFim").checked;
+
+  const anterior = $("#novoHorario").value;
+  const horarios = data && duracao && (repeticao.vezes == null || repeticao.vezes >= 2)
+    ? horariosLivres(estado, { data, repeticao, duracao, profissionalId }) : [];
+  $("#novoHorario").replaceChildren(...(horarios.length
+    ? horarios.map(horario => el("option", { value: horario, selected: horario === anterior }, horario))
+    : [el("option", { value: "" }, duracao ? "Nenhum horário livre neste dia" : "Escolha um serviço")]));
+  $("#novoHorario").disabled = !horarios.length;
+
+  const regra = repeticao.frequencia === "mensal" && data ? ` · ${descreverMensal(data)}` : "";
+  $("#novoResumo").textContent = duracao
+    ? `${duracao} min · ${formatarMoeda(preco)}${repete ? " por atendimento" : ""}${regra}` : "";
+}
+
+function prepararNovo(data) {
+  $("#novoData").value = data;
+  if (visao.filtro) $("#novoProfissional").value = visao.filtro;
+}
+
+formNovo.addEventListener("input", atualizarHorariosNovo);
+formNovo.addEventListener("change", atualizarHorariosNovo);
+
+formNovo.addEventListener("submit", evento => {
+  evento.preventDefault();
+  const valores = new FormData(formNovo);
+  const dados = lerFormNovo();
+  const retorno = criarAgendamento({
+    ...dados,
+    nome: valores.get("nome"),
+    telefone: valores.get("telefone"),
+    inicio: valores.get("horario"),
+    origem: "painel"
+  });
+  if (!resultado(retorno, "Horário marcado.", $("#novoErro"))) return;
+
+  formNovo.elements.nome.value = "";
+  formNovo.elements.telefone.value = "";
+  visao.dia = dados.data;
+  visao.ano = daChave(dados.data).getFullYear();
+  visao.mes = daChave(dados.data).getMonth();
+  desenharAgenda();
+  location.hash = "agenda";
+});
+
+/* Aviso antes de mudanças que atingem quem já tem horário */
+
+const chaveConflito = item => `${item.agendamento.id}|${item.data}`;
+
+function limparImpacto(form) {
+  const caixa = form.querySelector(".impacto");
+  const botao = form.querySelector('[type="submit"]');
+  caixa.hidden = true;
+  delete form.dataset.confirmado;
+  if (botao.dataset.rotulo) botao.textContent = botao.dataset.rotulo;
+  delete botao.dataset.rotulo;
+}
+
+// Simula a mudança e, se ela deixar alguém marcado fora do horário de atendimento,
+// mostra a lista e pede um segundo envio para confirmar. Devolve true quando pode salvar.
+function podeSalvar(form, simular) {
+  if (form.dataset.confirmado) return true;
+  const previa = simular();
+  if (!previa.ok) return true;
+
+  const atuais = new Set(conflitosFuturos(estado).map(chaveConflito));
+  const novos = conflitosFuturos(previa.estado).filter(item => !atuais.has(chaveConflito(item)));
+  if (!novos.length) return true;
+
+  // Um cliente fixo aparece uma vez só, com a primeira data atingida e quantas vêm depois.
+  const porCliente = new Map();
+  for (const item of novos) {
+    const grupo = porCliente.get(item.agendamento.id) ?? { ...item, datas: 0 };
+    grupo.datas++;
+    porCliente.set(item.agendamento.id, grupo);
+  }
+  const grupos = [...porCliente.values()];
+
+  const caixa = form.querySelector(".impacto");
+  const botao = form.querySelector('[type="submit"]');
+  caixa.replaceChildren(
+    el("p", { class: "impacto__titulo" }, icone("alerta"),
+      `Isso atinge ${grupos.length} ${grupos.length === 1 ? "cliente já marcado" : "clientes já marcados"}:`),
+    el("ul", { class: "impacto__lista numeros" }, grupos.slice(0, 5).map(({ agendamento, data, datas }) => el("li", {},
+      `${agendamento.cliente.nome} (${nomeProfissional(agendamento.profissionalId)}) · ` +
+      `${formatarData(data, { weekday: "short", day: "2-digit", month: "2-digit" })} às ${agendamento.inicio}` +
+      (datas > 1 ? ` e mais ${datas - 1} ${datas === 2 ? "data" : "datas"}` : "")))),
+    grupos.length > 5 ? el("p", {}, `e mais ${grupos.length - 5} clientes.`) : "",
+    el("p", {}, "Se salvar, esses horários continuam na agenda com um alerta, para você avisar o cliente e remarcar ou cancelar."),
+    el("button", { type: "button", class: "botao botao--contorno botao--pequeno", onclick: () => limparImpacto(form) }, "Revisar"));
+  caixa.hidden = false;
+  form.dataset.confirmado = "true";
+  botao.dataset.rotulo = botao.textContent;
+  botao.textContent = "Salvar mesmo assim";
+  caixa.scrollIntoView({ block: "nearest" });
+  return false;
+}
+
+for (const form of document.querySelectorAll("#formExpediente, #formAusencia, #formBloqueio")) {
+  form.addEventListener("input", () => limparImpacto(form));
+  form.addEventListener("change", () => limparImpacto(form));
+}
+
+/* Expediente */
+
+function desenharExpediente() {
+  $("#profExpediente").replaceChildren(...config.profissionais.map(pessoa => el("button", {
+    type: "button",
+    class: "chip",
+    "aria-pressed": String(pessoa.id === visao.profissionalExpediente),
+    onclick: () => {
+      visao.profissionalExpediente = pessoa.id;
+      desenharExpediente();
     }
+  }, pessoa.nome)));
 
-    const description = document.createElement("p");
-    description.textContent = `${product.name} · ${currency(product.price)}`;
-    const remove = makeButton("Remover", () => {
-      state.products.splice(state.products.indexOf(product), 1);
-      if (product.photoUrl) URL.revokeObjectURL(product.photoUrl);
-      renderProducts();
-    }, "button button--danger");
+  const expediente = estado.expedientes[visao.profissionalExpediente];
+  $("#semana").replaceChildren(...ORDEM_DA_SEMANA.map(dia => {
+    const atual = expediente[dia];
+    const hora = (nome, rotulo, valor) => el("label", { class: "campo" },
+      el("span", { class: "campo__rotulo" }, rotulo),
+      el("input", { class: "entrada numeros", type: "time", name: `${nome}-${dia}`, value: valor || "" }));
+    const horas = el("div", { class: "semana__horas", hidden: !atual },
+      hora("inicio", "Começa", atual?.inicio ?? "09:00"),
+      hora("fim", "Termina", atual?.fim ?? "18:00"),
+      hora("pausaInicio", "Pausa das", atual?.pausaInicio),
+      hora("pausaFim", "até", atual?.pausaFim));
+    const estadoDia = el("small", { class: "semana__estado" }, atual ? "" : "folga");
+    const ativo = el("input", { type: "checkbox", role: "switch", name: `ativo-${dia}`, checked: Boolean(atual) });
+    ativo.addEventListener("change", () => {
+      horas.hidden = !ativo.checked;
+      estadoDia.textContent = ativo.checked ? "" : "folga";
+    });
 
-    row.append(description, remove);
-    list.append(row);
-  }
-
-  if (!state.products.length) list.textContent = "Nenhum produto nesta demonstração.";
+    return el("div", { class: "semana__dia" },
+      el("label", { class: "alternador" }, el("span", {}, DIAS_DA_SEMANA[dia], estadoDia), ativo),
+      horas);
+  }));
+  limparImpacto($("#formExpediente"));
+  $("#salvarExpediente").textContent = `Salvar expediente de ${nomeProfissional(visao.profissionalExpediente)}`;
+  $("#expedienteErro").textContent = "";
 }
 
-$("#productForm").addEventListener("submit", event => {
-  event.preventDefault();
-  const form = event.currentTarget;
-  const values = new FormData(form);
-  const name = String(values.get("name")).trim();
-  const price = Number(values.get("price"));
-  const photo = values.get("photo");
-  const hasPhoto = photo instanceof File && photo.size > 0;
-
-  if (!name || !Number.isFinite(price) || price <= 0) {
-    $("#productStatus").textContent = "Informe um produto e preço maior que zero.";
-    return;
+$("#formExpediente").addEventListener("submit", evento => {
+  evento.preventDefault();
+  const valores = new FormData(evento.currentTarget);
+  const dias = {};
+  for (let dia = 0; dia < 7; dia++) {
+    dias[dia] = valores.get(`ativo-${dia}`) ? {
+      inicio: valores.get(`inicio-${dia}`),
+      fim: valores.get(`fim-${dia}`),
+      pausaInicio: valores.get(`pausaInicio-${dia}`),
+      pausaFim: valores.get(`pausaFim-${dia}`)
+    } : null;
   }
-  if (hasPhoto && (!["image/jpeg", "image/png", "image/webp"].includes(photo.type) ||
-      photo.size > 5 * 1024 * 1024)) {
-    $("#productStatus").textContent = "Use JPG, PNG ou WebP de até 5 MB.";
-    return;
+  const id = visao.profissionalExpediente;
+  if (!podeSalvar(evento.currentTarget, () => salvarExpediente(id, dias, { simular: true }))) return;
+  if (resultado(salvarExpediente(id, dias), `Expediente de ${nomeProfissional(id)} salvo.`, $("#expedienteErro"))) {
+    desenharExpediente();
+    desenharAgenda();
   }
+});
 
-  state.products.push({
-    id: state.nextSettingId++, name, price,
-    photoUrl: hasPhoto ? URL.createObjectURL(photo) : null
+/* Ausências e bloqueios */
+
+const horasTexto = item => (item.horaInicio ? `${item.horaInicio}–${item.horaFim}` : "dia inteiro");
+
+function registro(texto, detalhe, aoRemover) {
+  const remover = el("button", { type: "button", class: "botao botao--perigo botao--pequeno" }, "Remover");
+  confirmarNoBotao(remover, "Confirmar", aoRemover);
+  return el("li", { class: "registro" },
+    el("div", { class: "registro__texto" }, el("strong", {}, texto), el("span", { class: "numeros" }, detalhe)),
+    remover);
+}
+
+function desenharAusencias() {
+  const futuras = estado.ausencias.filter(item => item.fim >= hoje()).sort((a, b) => a.inicio.localeCompare(b.inicio));
+  $("#listaAusencias").replaceChildren(...futuras.map(item => registro(
+    nomeProfissional(item.profissionalId),
+    `${item.inicio === item.fim ? formatarData(item.inicio) : `${formatarData(item.inicio)} a ${formatarData(item.fim)}`} · ${horasTexto(item)}`,
+    () => resultado(removerAusencia(item.id), "Ausência removida.") && atualizarTudo())));
+}
+
+function desenharBloqueios() {
+  const futuros = estado.bloqueios.filter(item => item.data >= hoje()).sort((a, b) => a.data.localeCompare(b.data));
+  $("#listaBloqueios").replaceChildren(...futuros.map(item => registro(
+    item.motivo,
+    `${formatarData(item.data, { weekday: "short", day: "2-digit", month: "2-digit" })} · ${horasTexto(item)}`,
+    () => resultado(removerBloqueio(item.id), "Bloqueio removido.") && atualizarTudo())));
+}
+
+function ligarFormulario(seletor, salvar, mensagem) {
+  const form = $(seletor);
+  form.addEventListener("submit", evento => {
+    evento.preventDefault();
+    const valores = Object.fromEntries(new FormData(form));
+    if (!podeSalvar(form, () => salvar(valores, { simular: true }))) return;
+    if (resultado(salvar(valores), mensagem, form.querySelector(".campo__erro"))) {
+      form.reset();
+      limparImpacto(form);
+      atualizarTudo();
+    }
   });
-  $("#productStatus").textContent = "Produto incluído somente neste painel; a loja não foi alterada.";
-  form.reset();
-  renderProducts();
+}
+
+ligarFormulario("#formAusencia", criarAusencia, "Ausência registrada.");
+ligarFormulario("#formBloqueio", criarBloqueio, "Bloqueio adicionado.");
+
+/* Produtos */
+
+// Reduz a foto antes de guardar, para caber no armazenamento do navegador.
+function reduzirFoto(arquivo, lado = 900) {
+  return new Promise((resolver, rejeitar) => {
+    const imagem = new Image();
+    const endereco = URL.createObjectURL(arquivo);
+    imagem.onload = () => {
+      const escala = Math.min(1, lado / Math.max(imagem.width, imagem.height));
+      const tela = el("canvas", { width: Math.round(imagem.width * escala), height: Math.round(imagem.height * escala) });
+      tela.getContext("2d").drawImage(imagem, 0, 0, tela.width, tela.height);
+      URL.revokeObjectURL(endereco);
+      resolver(tela.toDataURL("image/jpeg", .82));
+    };
+    imagem.onerror = () => {
+      URL.revokeObjectURL(endereco);
+      rejeitar(new Error("Não deu para abrir essa imagem."));
+    };
+    imagem.src = endereco;
+  });
+}
+
+const formProduto = $("#formProduto");
+// Na edição: id do produto e a foto que ele terá (undefined = continua a mesma).
+const edicao = { id: null, foto: undefined };
+
+function mostrarPrevia(endereco) {
+  const previa = $("#produtoPrevia");
+  if (previa.src.startsWith("blob:")) URL.revokeObjectURL(previa.src);
+  previa.hidden = !endereco;
+  if (endereco) previa.src = endereco;
+  else previa.removeAttribute("src");
+  $("#produtoFotoTexto").textContent = endereco ? "Trocar foto" : "Adicionar foto";
+  $("#removerFoto").hidden = !endereco;
+}
+
+function sairDaEdicao() {
+  edicao.id = null;
+  edicao.foto = undefined;
+  formProduto.reset();
+  formProduto.querySelector(".campo__erro").textContent = "";
+  mostrarPrevia(null);
+  $("#produtoTitulo").textContent = "Novo produto";
+  $("#salvarProduto").textContent = "Adicionar à loja";
+  $("#cancelarEdicao").hidden = true;
+  desenharProdutos();
+}
+
+function editarProduto(produto) {
+  edicao.id = produto.id;
+  edicao.foto = undefined;
+  formProduto.reset();
+  formProduto.querySelector(".campo__erro").textContent = "";
+  formProduto.elements.nome.value = produto.nome;
+  formProduto.elements.preco.value = produto.preco.toFixed(2).replace(".", ",");
+  formProduto.elements.descricao.value = produto.descricao || "";
+  mostrarPrevia(produto.foto);
+  $("#produtoTitulo").textContent = "Editar produto";
+  $("#salvarProduto").textContent = "Salvar alterações";
+  $("#cancelarEdicao").hidden = false;
+  desenharProdutos();
+  formProduto.scrollIntoView({ block: "start" });
+  formProduto.elements.preco.focus({ preventScroll: true });
+}
+
+$("#cancelarEdicao").addEventListener("click", sairDaEdicao);
+
+$("#removerFoto").addEventListener("click", () => {
+  $("#produtoFoto").value = "";
+  if (edicao.id) edicao.foto = null;
+  mostrarPrevia(null);
 });
 
-$("#copyReminder").addEventListener("click", async () => {
-  const message =
-    "Olá, Pedro! Passando para lembrar do seu horário de barba na Santiago Barbearia, " +
-    "com o Damigo. Pode confirmar que vem? 🙂";
-  $("#reminderText").textContent = message;
-  $("#reminderText").hidden = false;
+$("#produtoFoto").addEventListener("change", evento => {
+  const arquivo = evento.target.files[0];
+  if (arquivo) mostrarPrevia(URL.createObjectURL(arquivo));
+});
 
-  try {
-    await navigator.clipboard.writeText(message);
-    $("#reminderStatus").textContent = "Mensagem copiada. Revise-a antes de enviar manualmente.";
-  } catch {
-    $("#reminderStatus").textContent = "Selecione a mensagem acima e copie-a manualmente.";
+formProduto.addEventListener("submit", async evento => {
+  evento.preventDefault();
+  const form = evento.currentTarget;
+  const erro = form.querySelector(".campo__erro");
+  const valores = new FormData(form);
+  const arquivo = valores.get("foto");
+
+  let foto = edicao.id ? edicao.foto : null;
+  if (arquivo instanceof File && arquivo.size) {
+    if (!["image/jpeg", "image/png", "image/webp"].includes(arquivo.type)) {
+      erro.textContent = "Use uma foto JPG, PNG ou WebP.";
+      return;
+    }
+    try {
+      foto = await reduzirFoto(arquivo);
+    } catch (falha) {
+      erro.textContent = falha.message;
+      return;
+    }
+  }
+
+  const dados = {
+    nome: valores.get("nome"),
+    preco: String(valores.get("preco")).replace(/\./g, "").replace(",", "."),
+    descricao: valores.get("descricao"),
+    foto
+  };
+  const retorno = edicao.id ? atualizarProduto(edicao.id, dados) : criarProduto(dados);
+  if (resultado(retorno, edicao.id ? "Produto atualizado na loja." : "Produto adicionado à loja.", erro)) {
+    sairDaEdicao();
   }
 });
 
-renderRequests();
-renderCalendar();
-renderAbsences();
-renderBlocks();
-renderProducts();
+function desenharProdutos() {
+  const lista = $("#listaProdutos");
+  if (!estado.produtos.length) {
+    lista.replaceChildren(el("li", { class: "vazio" }, icone("sacola"),
+      el("strong", {}, "Nenhum produto na loja"), el("p", {}, "Os produtos que você adicionar aparecem aqui e na loja.")));
+    return;
+  }
+  lista.replaceChildren(...estado.produtos.map(produto => {
+    const item = registro(produto.nome, formatarMoeda(produto.preco), () => {
+      if (!resultado(removerProduto(produto.id), "Produto removido da loja.")) return;
+      if (edicao.id === produto.id) sairDaEdicao();
+      else desenharProdutos();
+    });
+    item.classList.toggle("registro--editando", edicao.id === produto.id);
+    item.querySelector(".botao--perigo").before(el("button", {
+      type: "button",
+      class: "botao botao--contorno botao--pequeno",
+      "aria-label": `Editar ${produto.nome}`,
+      onclick: () => editarProduto(produto)
+    }, "Editar"));
+    item.prepend(produto.foto
+      ? el("img", { class: "registro__foto", src: produto.foto, alt: "" })
+      : el("span", { class: "registro__foto registro__foto--vazia", "aria-hidden": "true" }, produto.nome[0]));
+    return item;
+  }));
+}
+
+/* Dados de teste */
+
+confirmarNoBotao($("#apagarTudo"), "Toque de novo para apagar tudo", () => {
+  apagarTudo();
+  estado = carregar();
+  atualizarTudo();
+  avisar("Dados de teste apagados.");
+});
+
+/* Início */
+
+function atualizarTudo() {
+  desenharAgenda();
+  desenharExpediente();
+  desenharAusencias();
+  desenharBloqueios();
+  desenharProdutos();
+  atualizarHorariosNovo();
+}
+
+preencherMarca();
+aplicarIcones();
+mascararTelefone(formNovo.elements.telefone);
+desenharFormNovo();
+$("#ausenciaProfissional").replaceChildren(...opcoesProfissionais());
+atualizarTudo();
+abrirAba(location.hash.slice(1));
+
+// Um cliente marcou pelo site em outra aba: a agenda se atualiza sozinha.
+aoMudar(novo => {
+  estado = novo;
+  desenharAgenda();
+  desenharProdutos();
+  if (!$('[data-secao="novo"]').hidden) atualizarHorariosNovo();
+});

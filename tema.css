@@ -1,0 +1,52 @@
+/* Identidade visual da barbearia. Para um novo cliente, troque as fontes, as cores
+   e as imagens daqui (as imagens ficam na pasta /imagens). */
+@import url("https://fonts.googleapis.com/css2?family=Rye&family=Roboto+Slab:wght@500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap");
+
+:root {
+  color-scheme: dark;
+
+  /* Letreiro do logo e chamadas grandes; títulos; texto corrido. */
+  --fonte-letreiro: "Rye", "Roboto Slab", Georgia, serif;
+  --fonte-titulo: "Roboto Slab", Georgia, "Times New Roman", serif;
+  --fonte-texto: "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  /* Preto quente do couro, dourado mostarda do logo e o creme das letras. */
+  --cor-fundo: #13110f;
+  --cor-superficie: #1d1a17;
+  --cor-superficie-2: #27231f;
+  --cor-texto: #f1e9db;
+  --cor-texto-suave: #ada18e;
+  --cor-linha: #352f29;
+  --cor-linha-forte: #51483e;
+
+  --cor-destaque: #c69434;
+  --cor-destaque-forte: #ddb15a;
+  --cor-destaque-suave: #3a2d17;
+  --cor-destaque-texto: #15120f;
+
+  /* Ênfase: opções escolhidas e botões secundários fortes. */
+  --cor-enfase: #efe6d6;
+  --cor-enfase-2: #ffffff;
+  --cor-enfase-texto: #15120f;
+
+  /* Barras e faixas que ficam por cima do conteúdo (resumo, avisos, chamadas). */
+  --cor-barra: #1f1a15;
+  --cor-barra-texto: #f1e9db;
+
+  --cor-perigo: #e98b74;
+  --cor-perigo-suave: #3a211b;
+  --cor-sucesso: #8dbb84;
+
+  /* Matiz das sombras, em RGB. */
+  --sombra-rgb: 0 0 0;
+  --sombra-forca: 4;
+
+  /* Imagens do salão e ornamentos. */
+  --imagem-capa: url("/imagens/capa.jpg");
+  --imagem-loja: url("/imagens/loja.jpg");
+  --imagem-emblema: url("/imagens/emblema.svg");
+  --imagem-arabesco: url("/imagens/arabesco.svg");
+  /* Piso quadriculado do salão. */
+  --cor-xadrez-a: #b9a27b;
+  --cor-xadrez-b: #4a3a28;
+}

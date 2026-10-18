@@ -1,42 +1,40 @@
-"use strict";
+import { config } from "./config.js";
+import { formatarMoeda } from "./agenda.js";
+import { aoMudar, carregar } from "./dados.js";
+import { $, aplicarIcones, el, icone, linkWhatsApp, preencherMarca } from "./ui.js";
 
-// Dados independentes do painel: esta página não possui catálogo compartilhado.
-const showcaseProducts = [
-  {
-    name: "Pomada modeladora",
-    description: "Descrição ilustrativa. Substitua pelo produto que a barbearia realmente vende."
-  },
-  {
-    name: "Óleo para barba",
-    description: "Fotos, características e condições de venda precisam ser confirmadas antes da publicação."
-  }
-];
+function cartao(produto, indice) {
+  const imagem = produto.foto
+    ? el("img", { class: "produto__foto", src: produto.foto, alt: produto.nome, loading: "lazy" })
+    : el("div", { class: "produto__foto produto__foto--vazia", "aria-hidden": "true" }, produto.nome[0]);
 
-const gallery = document.querySelector("#productGallery");
+  const reservar = config.whatsapp && el("a", {
+    class: "produto__reservar",
+    href: linkWhatsApp(config.whatsapp, `Olá! Vocês têm ${produto.nome} disponível?`),
+    target: "_blank",
+    rel: "noopener"
+  }, icone("mensagem"), "Perguntar");
 
-for (const product of showcaseProducts) {
-  const card = document.createElement("article");
-  card.className = "product-card";
-
-  const imagePlaceholder = document.createElement("div");
-  imagePlaceholder.className = "product-card__image";
-  imagePlaceholder.setAttribute("role", "img");
-  imagePlaceholder.setAttribute("aria-label", `Espaço reservado para foto de ${product.name}`);
-  imagePlaceholder.textContent = "Foto do produto";
-
-  const body = document.createElement("div");
-  body.className = "product-card__body";
-
-  const title = document.createElement("h3");
-  title.textContent = product.name;
-
-  const description = document.createElement("p");
-  description.textContent = product.description;
-
-  const note = document.createElement("small");
-  note.textContent = "Preço e disponibilidade a confirmar";
-
-  body.append(title, description, note);
-  card.append(imagePlaceholder, body);
-  gallery.append(card);
+  return el("article", { class: "produto", style: `--atraso: ${Math.min(indice, 8) * 60}ms` },
+    imagem,
+    el("div", { class: "produto__corpo" },
+      el("h2", { class: "produto__nome" }, produto.nome),
+      produto.descricao && el("p", { class: "produto__descricao" }, produto.descricao),
+      el("div", { class: "produto__rodape" },
+        el("strong", { class: "produto__preco numeros" }, formatarMoeda(produto.preco)),
+        reservar)));
 }
+
+function desenhar({ produtos }) {
+  $("#produtos").replaceChildren(...(produtos.length
+    ? produtos.map(cartao)
+    : [el("div", { class: "vazio" },
+        icone("sacola"),
+        el("strong", {}, "A vitrine está sendo montada"),
+        el("p", {}, "Em breve os produtos da casa aparecem aqui."))]));
+}
+
+preencherMarca();
+aplicarIcones();
+desenhar(carregar());
+aoMudar(desenhar);

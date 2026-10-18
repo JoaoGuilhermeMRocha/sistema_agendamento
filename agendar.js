@@ -1,285 +1,352 @@
-"use strict";
+import { config } from "./config.js";
+import {
+  datasDaSerie, descreverMensal, descreverRepeticao, diaFechado, formatarData, formatarMoeda, hoje,
+  horariosLivres, profissionalPorId, somarDias, somarServicos
+} from "./agenda.js";
+import { aoMudar, carregar, criarAgendamento } from "./dados.js";
+import {
+  $, aplicarIcones, capitalizar, el, formatarTelefone, icone, linkWhatsApp, mascararTelefone,
+  mostrarErroCampo, preencherMarca, soDigitos
+} from "./ui.js";
 
-const bookingElements = {
-  services: document.querySelector("#serviceOptions"),
-  professionals: document.querySelector("#professionalOptions"),
-  dates: document.querySelector("#availableDates"),
-  times: document.querySelector("#availableTimes"),
-  availabilityMessage: document.querySelector("#availabilityMessage"),
-  repeat: document.querySelector("#repeatBooking"),
-  frequencyField: document.querySelector("#frequencyField"),
-  frequency: document.querySelector("#bookingFrequency"),
-  summaryServices: document.querySelector("#summaryServices"),
-  summaryProfessional: document.querySelector("#summaryProfessional"),
-  summaryDate: document.querySelector("#summaryDate"),
-  summaryFrequency: document.querySelector("#summaryFrequency"),
-  contactFields: document.querySelector("#contactFields"),
-  customerName: document.querySelector("#customerName"),
-  customerPhone: document.querySelector("#customerPhone"),
-  submit: document.querySelector("#submitRequest"),
-  feedback: document.querySelector("#requestFeedback")
+const campos = {
+  nome: $("#nome"),
+  telefone: $("#telefone"),
+  repetir: $("#repetir"),
+  semFim: $("#semFim")
 };
 
-const serviceDurations = { Cabelo: 30, Barba: 30, Sobrancelha: 15 };
-const professionalNames = ["Santiago", "Damigo"];
-const openingMinutes = 9 * 60;
-const closingMinutes = 18 * 60;
-const lunchStartMinutes = 12 * 60;
-const lunchEndMinutes = 13 * 60;
-
-const selection = {
-  services: ["Cabelo"],
-  professional: null,
-  date: null,
-  time: null,
-  frequency: "none",
-  submitted: false
+const escolha = {
+  servicos: [config.servicos[0].id],
+  profissionalId: null,
+  data: null,
+  horario: null,
+  repeticao: { frequencia: "nenhuma", vezes: 1 }
 };
+let vezesEscolhidas = 4;
+let estado = carregar();
 
-const localRequests = [];
-const padNumber = value => String(value).padStart(2, "0");
-const dateKey = date => `${date.getFullYear()}-${padNumber(date.getMonth() + 1)}-${padNumber(date.getDate())}`;
-const dateFromKey = key => {
-  const [year, month, day] = key.split("-").map(Number);
-  return new Date(year, month - 1, day);
-};
-const formatDate = key => new Intl.DateTimeFormat("pt-BR").format(dateFromKey(key));
-const formatTime = minutes => `${padNumber(Math.floor(minutes / 60))}:${padNumber(minutes % 60)}`;
-const timeInMinutes = time => Number(time.slice(0, 2)) * 60 + Number(time.slice(3));
-const overlaps = (start, end, otherStart, otherEnd) => start < otherEnd && otherStart < end;
+const soma = () => somarServicos(escolha.servicos);
+const pronto = () => escolha.servicos.length && escolha.data && escolha.horario;
 
-function datePlusDays(key, days) {
-  const date = dateFromKey(key);
-  date.setDate(date.getDate() + days);
-  return dateKey(date);
+/* Etapa 1: serviços */
+
+function desenharServicos() {
+  $("#servicos").replaceChildren(...config.servicos.map(servico => el("button", {
+    type: "button",
+    class: "servico",
+    "data-servico": servico.id,
+    "aria-pressed": String(escolha.servicos.includes(servico.id))
+  },
+  el("span", { class: "servico__marca" }, icone("check")),
+  el("span", { class: "servico__nome" }, servico.nome),
+  el("span", { class: "servico__info numeros" }, `${servico.duracao} min`),
+  el("strong", { class: "servico__preco numeros" }, formatarMoeda(servico.preco)))));
 }
 
-function occurrenceDates(firstDate) {
-  if (selection.frequency === "none") return [firstDate];
+$("#servicos").addEventListener("click", evento => {
+  const botao = evento.target.closest("[data-servico]");
+  if (!botao) return;
+  const id = botao.dataset.servico;
+  escolha.servicos = escolha.servicos.includes(id)
+    ? escolha.servicos.filter(item => item !== id)
+    : config.servicos.map(servico => servico.id).filter(item => item === id || escolha.servicos.includes(item));
+  botao.setAttribute("aria-pressed", String(escolha.servicos.includes(id)));
+  atualizarAgenda();
+});
 
-  if (selection.frequency === "weekly" || selection.frequency === "fortnightly") {
-    const interval = selection.frequency === "weekly" ? 7 : 14;
-    return Array.from({ length: 4 }, (_, index) => datePlusDays(firstDate, index * interval));
+/* Etapa 2: profissional */
+
+function desenharProfissionais() {
+  const opcoes = [{ id: null, nome: "Sem preferência" }, ...config.profissionais];
+  $("#profissionais").replaceChildren(...opcoes.map(pessoa => el("button", {
+    type: "button",
+    class: "chip",
+    "data-profissional": pessoa.id ?? "",
+    "aria-pressed": String(escolha.profissionalId === pessoa.id)
+  }, pessoa.id ? el("span", { class: "chip__inicial", "aria-hidden": "true" }, pessoa.nome[0]) : null, pessoa.nome)));
+}
+
+$("#profissionais").addEventListener("click", evento => {
+  const botao = evento.target.closest("[data-profissional]");
+  if (!botao) return;
+  escolha.profissionalId = botao.dataset.profissional || null;
+  for (const opcao of $("#profissionais").children) {
+    opcao.setAttribute("aria-pressed", String(opcao === botao));
+  }
+  atualizarAgenda();
+});
+
+/* Etapa 3: dia, horário e repetição */
+
+function rotuloDia(data) {
+  if (data === hoje()) return "Hoje";
+  if (data === somarDias(hoje(), 1)) return "Amanhã";
+  return formatarData(data, { weekday: "short" }).replace(".", "");
+}
+
+function desenharDias() {
+  const { duracao } = soma();
+  const dias = Array.from({ length: config.agenda.diasParaAgendar }, (_, indice) => somarDias(hoje(), indice));
+  const livres = new Map(dias.map(data => [data, horariosLivres(estado, {
+    data, repeticao: escolha.repeticao, duracao, profissionalId: escolha.profissionalId
+  })]));
+
+  if (escolha.data && !livres.get(escolha.data)?.length) escolha.data = null;
+  escolha.data ??= dias.find(data => livres.get(data).length) || null;
+
+  $("#dias").replaceChildren(...dias.map(data => {
+    const disponivel = livres.get(data).length > 0;
+    const fechado = diaFechado(estado, data, escolha.profissionalId);
+    return el("button", {
+      type: "button",
+      class: "dia",
+      "data-dia": data,
+      "aria-pressed": String(data === escolha.data),
+      "aria-label": `${formatarData(data, { weekday: "long", day: "numeric", month: "long" })}${disponivel ? "" : ", sem horários"}`,
+      disabled: !disponivel
+    },
+    el("span", { class: "dia__semana" }, rotuloDia(data)),
+    el("strong", { class: "dia__numero numeros" }, formatarData(data, { day: "numeric" })),
+    el("span", { class: "dia__mes" }, fechado ? "fechado" : disponivel
+      ? formatarData(data, { month: "short" }).replace(".", "") : "lotado"));
+  }));
+
+  desenharHorarios(livres.get(escolha.data) || []);
+}
+
+function grupoDoHorario(horario) {
+  const hora = Number(horario.slice(0, 2));
+  return hora < 12 ? "Manhã" : hora < 18 ? "Tarde" : "Noite";
+}
+
+function desenharHorarios(horarios) {
+  const area = $("#horarios");
+  if (!horarios.includes(escolha.horario)) escolha.horario = null;
+
+  if (!escolha.servicos.length) {
+    area.replaceChildren(el("p", { class: "horarios__aviso" }, "Escolha pelo menos um serviço para ver os horários."));
+    return;
+  }
+  if (!escolha.data) {
+    const repetindo = escolha.repeticao.frequencia !== "nenhuma";
+    area.replaceChildren(el("p", { class: "horarios__aviso" }, repetindo
+      ? "Nenhum horário fica livre em todas as datas dessa repetição. Tente outra frequência, menos atendimentos ou outro profissional."
+      : "Nenhum horário livre nos próximos dias. Tente outro profissional."));
+    return;
   }
 
-  const original = dateFromKey(firstDate);
-  return Array.from({ length: 4 }, (_, index) => {
-    const month = new Date(original.getFullYear(), original.getMonth() + index, 1);
-    const lastDay = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
-    if (original.getDate() > lastDay) return null;
-    month.setDate(original.getDate());
-    return dateKey(month);
+  const grupos = new Map();
+  for (const horario of horarios) {
+    const grupo = grupoDoHorario(horario);
+    grupos.set(grupo, [...(grupos.get(grupo) || []), horario]);
+  }
+  area.replaceChildren(
+    el("p", { class: "horarios__dia" }, capitalizar(formatarData(escolha.data, { weekday: "long", day: "numeric", month: "long" }))),
+    ...[...grupos].map(([nome, lista]) => el("div", { class: "horarios__grupo" },
+      el("h3", {}, nome),
+      el("div", { class: "horarios__grade" }, lista.map((horario, indice) => el("button", {
+        type: "button",
+        class: "horario numeros",
+        "data-horario": horario,
+        "aria-pressed": String(horario === escolha.horario),
+        style: `--atraso: ${Math.min(indice, 12) * 18}ms`
+      }, horario))))));
+}
+
+$("#dias").addEventListener("click", evento => {
+  const botao = evento.target.closest("[data-dia]");
+  if (!botao || botao.disabled) return;
+  escolha.data = botao.dataset.dia;
+  escolha.horario = null;
+  atualizarAgenda();
+});
+
+$("#horarios").addEventListener("click", evento => {
+  const botao = evento.target.closest("[data-horario]");
+  if (!botao) return;
+  escolha.horario = botao.dataset.horario;
+  for (const opcao of $("#horarios").querySelectorAll("[data-horario]")) {
+    opcao.setAttribute("aria-pressed", String(opcao === botao));
+  }
+  desenharResumo();
+});
+
+function lerRepeticao() {
+  const frequencia = campos.repetir.checked
+    ? document.querySelector('input[name="frequencia"]:checked').value : "nenhuma";
+  escolha.repeticao = frequencia === "nenhuma"
+    ? { frequencia, vezes: 1 }
+    : { frequencia, vezes: campos.semFim.checked ? null : vezesEscolhidas };
+
+  $("#opcoesRepeticao").hidden = !campos.repetir.checked;
+  $("#vezes").textContent = campos.semFim.checked ? "∞" : vezesEscolhidas;
+  $("#menosVezes").disabled = campos.semFim.checked || vezesEscolhidas <= 2;
+  $("#maisVezes").disabled = campos.semFim.checked || vezesEscolhidas >= config.agenda.maxAtendimentosRepetidos;
+  atualizarAgenda();
+}
+
+function alterarVezes(diferenca) {
+  vezesEscolhidas = Math.min(config.agenda.maxAtendimentosRepetidos, Math.max(2, vezesEscolhidas + diferenca));
+  lerRepeticao();
+}
+
+campos.repetir.addEventListener("change", lerRepeticao);
+campos.semFim.addEventListener("change", lerRepeticao);
+$("#opcoesRepeticao").addEventListener("change", evento => {
+  if (evento.target.name === "frequencia") lerRepeticao();
+});
+$("#menosVezes").addEventListener("click", () => alterarVezes(-1));
+$("#maisVezes").addEventListener("click", () => alterarVezes(1));
+
+function desenharDatasRepeticao() {
+  const alvo = $("#datasRepeticao");
+  if (escolha.repeticao.frequencia === "nenhuma" || !escolha.data) {
+    alvo.textContent = "";
+    return;
+  }
+  const datas = datasDaSerie(escolha.data, escolha.repeticao);
+  const mostradas = datas.slice(0, 4).map(data => formatarData(data)).join(", ");
+  const regra = escolha.repeticao.frequencia === "mensal" ? `${descreverMensal(escolha.data)}: ` : "";
+  alvo.textContent = regra + (escolha.repeticao.vezes == null
+    ? `${mostradas} e assim por diante.`
+    : `${mostradas}${datas.length > 4 ? ` … até ${formatarData(datas.at(-1))}` : ""}.`);
+}
+
+/* Resumo e confirmação */
+
+function proximaPendencia() {
+  if (!escolha.servicos.length) return { texto: "Escolha um serviço", alvo: "#etapaServicos" };
+  if (!escolha.data || !escolha.horario) return { texto: "Escolha um horário", alvo: "#etapaHorario" };
+  return null;
+}
+
+function desenharResumo() {
+  const { nomes, duracao, preco } = soma();
+  const repetindo = escolha.repeticao.frequencia !== "nenhuma";
+  const profissional = profissionalPorId(escolha.profissionalId);
+
+  $("#resumoServicos").textContent = nomes || "—";
+  $("#resumoProfissional").textContent = profissional?.nome || "Sem preferência";
+  $("#resumoQuando").textContent = escolha.data
+    ? `${formatarData(escolha.data, { weekday: "short", day: "2-digit", month: "2-digit" })}${escolha.horario ? ` às ${escolha.horario}` : ""}`
+    : "—";
+  $("#resumoRepeticao").textContent = descreverRepeticao(escolha.repeticao, escolha.data);
+  $("#resumoPreco").textContent = formatarMoeda(preco);
+  $("#resumoDuracao").textContent = duracao ? `${duracao} min${repetindo ? " · por atendimento" : ""}` : "";
+
+  const pendencia = proximaPendencia();
+  $("#confirmar").textContent = pendencia ? pendencia.texto : "Confirmar agendamento";
+  $("#confirmar").classList.toggle("resumo__botao--pendente", Boolean(pendencia));
+}
+
+function atualizarAgenda() {
+  desenharDias();
+  desenharDatasRepeticao();
+  desenharResumo();
+}
+
+function validarContato() {
+  const nome = campos.nome.value.trim();
+  const telefone = soDigitos(campos.telefone.value);
+  mostrarErroCampo(campos.nome, nome.length < 2 ? "Conta pra gente o seu nome." : "");
+  mostrarErroCampo(campos.telefone, /^\d{10,11}$/.test(telefone) ? "" : "Informe o WhatsApp com DDD.");
+  if (nome.length < 2) return campos.nome;
+  if (!/^\d{10,11}$/.test(telefone)) return campos.telefone;
+  return null;
+}
+
+$("#agendar").addEventListener("submit", evento => {
+  evento.preventDefault();
+  $("#erroEnvio").textContent = "";
+
+  const pendencia = proximaPendencia();
+  if (pendencia) {
+    $(pendencia.alvo).scrollIntoView({ block: "start" });
+    return;
+  }
+  const campoComErro = validarContato();
+  if (campoComErro) {
+    campoComErro.focus({ preventScroll: true });
+    $("#etapaDados").scrollIntoView({ block: "start" });
+    return;
+  }
+
+  const resultado = criarAgendamento({
+    nome: campos.nome.value,
+    telefone: campos.telefone.value,
+    servicos: escolha.servicos,
+    profissionalId: escolha.profissionalId,
+    data: escolha.data,
+    inicio: escolha.horario,
+    repeticao: escolha.repeticao,
+    origem: "cliente"
+  });
+
+  if (!resultado.ok) {
+    $("#erroEnvio").textContent = resultado.erro;
+    estado = carregar();
+    atualizarAgenda();
+    return;
+  }
+  mostrarConfirmacao(resultado.agendamento);
+});
+
+for (const campo of [campos.nome, campos.telefone]) {
+  campo.addEventListener("input", () => {
+    if (campo.getAttribute("aria-invalid") === "true") validarContato();
   });
 }
 
-function isProfessionalAvailable(professional, dates, start, duration) {
-  const end = start + duration;
-  if (start < openingMinutes || end > closingMinutes ||
-      overlaps(start, end, lunchStartMinutes, lunchEndMinutes)) return false;
+function mostrarConfirmacao(agendamento) {
+  const { nomes, duracao } = somarServicos(agendamento.servicos);
+  const profissional = profissionalPorId(agendamento.profissionalId).nome;
+  const quando = formatarData(agendamento.data, { weekday: "long", day: "numeric", month: "long" });
 
-  return dates.every(key => {
-    if (!key) return false;
-    const day = dateFromKey(key).getDay();
-    const now = new Date();
-    if (day === 0 || day === 1 || key < dateKey(now) ||
-        (key === dateKey(now) && start <= now.getHours() * 60 + now.getMinutes())) return false;
+  $("#confirmadoTexto").textContent =
+    `Te esperamos ${agendamento.data === hoje() ? "hoje" : quando}, às ${agendamento.inicio}, com ${profissional}.`;
+  $("#confirmadoDetalhes").replaceChildren(...[
+    ["Cliente", `${agendamento.cliente.nome} · ${formatarTelefone(agendamento.cliente.telefone)}`],
+    ["Serviços", `${nomes} · ${duracao} min`],
+    ["Valor", formatarMoeda(agendamento.preco)],
+    ["Repetição", descreverRepeticao(agendamento.repeticao, agendamento.data)]
+  ].map(([rotulo, valor]) => el("div", {}, el("dt", {}, rotulo), el("dd", {}, valor))));
 
-    return !localRequests.some(request =>
-      request.professional === professional &&
-      request.dates.includes(key) &&
-      overlaps(start, end, request.start, request.start + request.duration)
-    );
-  });
+  if (config.whatsapp) {
+    $("#falarBarbearia").href = linkWhatsApp(config.whatsapp,
+      `Olá! Acabei de marcar ${nomes} para ${formatarData(agendamento.data)} às ${agendamento.inicio}.`);
+    $("#falarBarbearia").hidden = false;
+  }
+
+  $("#areaAgendamento").hidden = true;
+  $("#confirmado").hidden = false;
+  document.body.classList.add("concluido");
+  $("#confirmado").focus({ preventScroll: true });
+  window.scrollTo({ top: 0 });
 }
 
-function availableProfessional(dates, start, duration) {
-  const candidates = selection.professional ? [selection.professional] : professionalNames;
-  return candidates.find(name => isProfessionalAvailable(name, dates, start, duration)) || null;
-}
-
-function availableTimes(firstDate) {
-  if (!firstDate || !selection.services.length) return [];
-  const dates = occurrenceDates(firstDate);
-  const duration = selection.services.reduce((total, service) => total + serviceDurations[service], 0);
-  const times = [];
-
-  for (let start = openingMinutes; start + duration <= closingMinutes; start += 15) {
-    if (availableProfessional(dates, start, duration)) times.push(formatTime(start));
-  }
-  return times;
-}
-
-function renderSummary() {
-  const duration = selection.services.reduce((total, service) => total + serviceDurations[service], 0);
-  bookingElements.summaryServices.textContent = selection.services.length
-    ? `${selection.services.join(" + ")} · ${duration} min`
-    : "Escolha um serviço";
-  bookingElements.summaryProfessional.textContent = selection.professional || "Tanto faz";
-  bookingElements.summaryDate.textContent = selection.time
-    ? `${occurrenceDates(selection.date).map(formatDate).join(" · ")} às ${selection.time}`
-    : selection.date ? `${formatDate(selection.date)} · escolha um horário` : "Escolha um dia";
-  bookingElements.summaryFrequency.textContent = {
-    none: "Somente uma vez",
-    weekly: "Semanal · 4 datas",
-    fortnightly: "Quinzenal · 4 datas",
-    monthly: "Mensal · 4 datas"
-  }[selection.frequency];
-
-  const ready = selection.services.length > 0 && selection.date && selection.time;
-  bookingElements.contactFields.hidden = !ready;
-  bookingElements.submit.disabled = !ready || selection.submitted;
-  bookingElements.submit.textContent = selection.submitted
-    ? "Solicitação simulada"
-    : !selection.services.length ? "Escolha um serviço"
-    : !selection.date ? "Escolha um dia"
-    : !selection.time ? "Escolha um horário" : "Simular pré-reserva";
-}
-
-function renderTimes() {
-  bookingElements.times.replaceChildren();
-  if (!selection.date) {
-    bookingElements.availabilityMessage.textContent = "Escolha uma data para ver os horários.";
-    return;
-  }
-
-  const times = availableTimes(selection.date);
-  if (!times.includes(selection.time)) selection.time = null;
-
-  for (const time of times) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = `time-button${time === selection.time ? " is-selected" : ""}`;
-    button.textContent = time;
-    button.dataset.time = time;
-    button.setAttribute("aria-pressed", String(time === selection.time));
-    bookingElements.times.append(button);
-  }
-  bookingElements.availabilityMessage.textContent = times.length
-    ? "Os horários mostrados comportam todos os serviços e datas selecionados."
-    : "Não há horário disponível para esta combinação.";
-}
-
-function renderDates() {
-  bookingElements.dates.replaceChildren();
-  const today = dateKey(new Date());
-  const dates = Array.from({ length: 14 }, (_, index) => datePlusDays(today, index))
-    .filter(key => availableTimes(key).length > 0);
-
-  if (!dates.includes(selection.date)) {
-    selection.date = null;
-    selection.time = null;
-  }
-
-  for (const key of dates) {
-    const date = dateFromKey(key);
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = `date-button${key === selection.date ? " is-selected" : ""}`;
-    button.dataset.date = key;
-    button.setAttribute("aria-pressed", String(key === selection.date));
-    button.setAttribute("aria-label", `Escolher ${formatDate(key)}`);
-
-    const weekday = document.createElement("span");
-    weekday.textContent = new Intl.DateTimeFormat("pt-BR", { weekday: "short" })
-      .format(date).replace(".", "").toUpperCase();
-    const day = document.createElement("strong");
-    day.textContent = date.getDate();
-    button.append(weekday, day);
-    bookingElements.dates.append(button);
-  }
-
-  if (!dates.length) {
-    bookingElements.availabilityMessage.textContent =
-      "Nenhuma data disponível nos próximos 14 dias. Tente outro serviço, profissional ou frequência.";
-  } else {
-    renderTimes();
-  }
-  renderSummary();
-}
-
-bookingElements.services.addEventListener("click", event => {
-  const button = event.target.closest("[data-service]");
-  if (!button || selection.submitted) return;
-
-  const service = button.dataset.service;
-  selection.services = selection.services.includes(service)
-    ? selection.services.filter(item => item !== service)
-    : [...selection.services, service];
-  button.classList.toggle("is-selected", selection.services.includes(service));
-  button.setAttribute("aria-pressed", String(selection.services.includes(service)));
-  renderDates();
+$("#novoAgendamento").addEventListener("click", () => {
+  escolha.data = null;
+  escolha.horario = null;
+  estado = carregar();
+  $("#confirmado").hidden = true;
+  $("#areaAgendamento").hidden = false;
+  document.body.classList.remove("concluido");
+  atualizarAgenda();
+  $("#etapaServicos").scrollIntoView({ block: "start" });
 });
 
-bookingElements.professionals.addEventListener("click", event => {
-  const button = event.target.closest("[data-professional]");
-  if (!button || selection.submitted) return;
+/* Início */
 
-  selection.professional = selection.professional === button.dataset.professional
-    ? null : button.dataset.professional;
-  for (const option of bookingElements.professionals.querySelectorAll("[data-professional]")) {
-    const active = option.dataset.professional === selection.professional;
-    option.classList.toggle("is-selected", active);
-    option.setAttribute("aria-pressed", String(active));
-  }
-  renderDates();
+preencherMarca();
+aplicarIcones();
+mascararTelefone(campos.telefone);
+desenharServicos();
+desenharProfissionais();
+atualizarAgenda();
+
+// Outra aba (o painel, por exemplo) mudou a agenda: atualiza os horários livres.
+aoMudar(novo => {
+  estado = novo;
+  if (!$("#areaAgendamento").hidden) atualizarAgenda();
 });
-
-bookingElements.repeat.addEventListener("change", () => {
-  if (selection.submitted) return;
-  bookingElements.frequencyField.hidden = !bookingElements.repeat.checked;
-  selection.frequency = bookingElements.repeat.checked ? bookingElements.frequency.value : "none";
-  renderDates();
-});
-
-bookingElements.frequency.addEventListener("change", () => {
-  if (selection.submitted) return;
-  selection.frequency = bookingElements.frequency.value;
-  renderDates();
-});
-
-bookingElements.dates.addEventListener("click", event => {
-  const button = event.target.closest("[data-date]");
-  if (!button || selection.submitted) return;
-  selection.date = button.dataset.date;
-  selection.time = null;
-  renderDates();
-});
-
-bookingElements.times.addEventListener("click", event => {
-  const button = event.target.closest("[data-time]");
-  if (!button || selection.submitted) return;
-  selection.time = button.dataset.time;
-  renderTimes();
-  renderSummary();
-});
-
-bookingElements.submit.addEventListener("click", () => {
-  if (selection.submitted || !selection.date || !selection.time) return;
-
-  const name = bookingElements.customerName.value.trim();
-  const phone = bookingElements.customerPhone.value.replace(/\D/g, "");
-  if (!name || !/^\d{10,11}$/.test(phone)) {
-    bookingElements.feedback.textContent = "Informe um nome e um WhatsApp fictício com DDD.";
-    (!name ? bookingElements.customerName : bookingElements.customerPhone).focus();
-    return;
-  }
-
-  const dates = occurrenceDates(selection.date);
-  const start = timeInMinutes(selection.time);
-  const duration = selection.services.reduce((total, service) => total + serviceDurations[service], 0);
-  const professional = availableProfessional(dates, start, duration);
-  if (!professional) {
-    bookingElements.feedback.textContent = "O horário deixou de estar disponível nesta demonstração.";
-    renderDates();
-    return;
-  }
-
-  localRequests.push({ professional, dates, start, duration });
-  selection.submitted = true;
-  bookingElements.feedback.textContent =
-    `Pré-reserva simulada para ${dates.length} ${dates.length === 1 ? "data" : "datas"}. ` +
-    "Nada foi enviado à barbearia. Não é um agendamento confirmado.";
-  renderSummary();
-});
-
-renderDates();

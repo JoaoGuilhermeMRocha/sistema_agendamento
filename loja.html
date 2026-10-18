@@ -2,47 +2,68 @@
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Loja | Santiago Barbearia</title>
-  <link rel="stylesheet" href="/header.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#13110f">
+  <meta name="description" content="Produtos para cabelo e barba disponíveis na barbearia.">
+  <title>Loja · Santiago Barbearia</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/tema.css">
+  <link rel="stylesheet" href="/base.css">
   <link rel="stylesheet" href="/loja.css">
-  <script src="/loja.js" defer></script>
+  <script type="module" src="/loja.js"></script>
 </head>
-<body>
-  <header class="site-header">
-    <div class="site-header__inner">
-      <a class="site-header__brand" href="/agendar">Santiago Barbearia</a>
-      <nav class="site-header__nav" aria-label="Navegação principal">
+<body data-pagina="Loja">
+  <a class="pular" href="#produtos">Pular para os produtos</a>
+
+  <header class="topo">
+    <div class="topo__interno">
+      <a class="marca" href="/agendar">
+        <span class="marca__emblema" aria-hidden="true"></span>
+        <span class="marca__texto">
+          <span class="marca__nome" data-marca="nomeCurto">Santiago</span>
+          <span class="marca__complemento" data-marca="complemento">Barbearia</span>
+        </span>
+      </a>
+      <nav class="topo__nav" aria-label="Navegação principal">
         <a href="/agendar">Agendar</a>
         <a href="/loja" aria-current="page">Loja</a>
-        <a href="/barbeiros">Barbeiros</a>
       </nav>
     </div>
   </header>
 
-  <main class="store-page">
-    <p class="store-page__eyebrow">Santiago Barbearia · Vitrine demonstrativa</p>
-    <h1>O cuidado continua depois do corte.</h1>
-    <p class="store-page__intro">
-      Um espaço para apresentar os produtos disponíveis na barbearia.
-      Por enquanto, esta página é apenas uma demonstração visual.
-    </p>
+  <header class="loja__capa">
+    <div class="loja__intro">
+      <div class="arabescos"><span class="loja__selo letreiro">Na bancada</span></div>
+      <h1 class="letreiro">O cuidado continua depois do corte</h1>
+      <hr class="filete">
+      <p>Os produtos que a gente usa na cadeira, para você levar para casa. É só pedir no seu próximo atendimento.</p>
+    </div>
+  </header>
 
-    <section class="store-products" aria-labelledby="products-title">
-      <div class="store-products__heading">
-        <h2 id="products-title">Produtos em destaque</h2>
-        <span>Exemplos para testar o layout</span>
+  <main class="loja">
+
+    <section id="produtos" class="produtos" aria-label="Produtos"></section>
+
+    <section class="chamada capitone" aria-labelledby="t-chamada">
+      <div>
+        <h2 id="t-chamada"><span class="chamada__ouro">Já marcou</span> seu horário?</h2>
+        <p>Corre que ainda dá tempo. Escolha o serviço e o horário em menos de um minuto.</p>
       </div>
-      <div id="productGallery" class="product-gallery"></div>
+      <a class="botao botao--destaque" href="/agendar#agendar">Marcar horário <span data-icone="seta"></span></a>
     </section>
-
-    <p class="store-notice">
-      <strong>Esta vitrine não realiza vendas.</strong> Não há carrinho, pagamento,
-      controle de estoque ou envio de pedidos. Produtos e preços exibidos são ilustrativos.
-    </p>
-    <a class="store-back" href="/agendar">← Voltar para o agendamento</a>
   </main>
 
-  <footer class="store-footer">Santiago Barbearia · Página demonstrativa</footer>
+  <footer class="rodape">
+    <div class="xadrez" aria-hidden="true"></div>
+    <div class="rodape__marca">
+      <span class="marca__emblema" aria-hidden="true"></span>
+      <span class="rodape__nome" data-marca="nome">Santiago Barbearia</span>
+      <span data-marca="endereco"></span>
+    </div>
+    <div class="rodape__contatos">
+      <a data-link="whatsapp" target="_blank" rel="noopener"><span data-icone="mensagem"></span><span data-texto></span></a>
+      <a data-link="instagram" target="_blank" rel="noopener"><span data-icone="instagram"></span><span data-texto></span></a>
+    </div>
+  </footer>
 </body>
 </html>

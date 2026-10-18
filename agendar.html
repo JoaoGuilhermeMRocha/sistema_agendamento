@@ -1,110 +1,192 @@
 <!doctype html>
 <html lang="pt-BR">
-<head><script src="https://myhub.ia.br/canvas-vendor/tailwind.js"></script>
+<head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Agendar | Santiago Barbearia</title>
-  <link rel="stylesheet" href="/header.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#13110f">
+  <meta name="description" content="Escolha o serviço, o profissional e o horário e marque seu atendimento em poucos toques.">
+  <title>Agendar · Santiago Barbearia</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/tema.css">
+  <link rel="stylesheet" href="/base.css">
   <link rel="stylesheet" href="/agendar.css">
-  <script src="/agendar.js" defer></script>
+  <script type="module" src="/agendar.js"></script>
 </head>
-<body>
-  <header class="site-header">
-    <div class="site-header__inner">
-      <a class="site-header__brand" href="/agendar.html">Santiago Barbearia</a>
-      <nav class="site-header__nav" aria-label="Navegação principal">
-        <a href="/agendar.html" aria-current="page">Agendar</a>
-        <a href="/loja.html">Loja</a>
-        <a href="/barbeiros.html">Barbeiros</a>
+<body data-pagina="Agendar">
+  <a class="pular" href="#agendar">Pular para o agendamento</a>
+
+  <header class="topo">
+    <div class="topo__interno">
+      <a class="marca" href="/agendar">
+        <span class="marca__emblema" aria-hidden="true"></span>
+        <span class="marca__texto">
+          <span class="marca__nome" data-marca="nomeCurto">Santiago</span>
+          <span class="marca__complemento" data-marca="complemento">Barbearia</span>
+        </span>
+      </a>
+      <nav class="topo__nav" aria-label="Navegação principal">
+        <a href="/agendar" aria-current="page">Agendar</a>
+        <a href="/loja">Loja</a>
       </nav>
     </div>
   </header>
 
   <main>
-    <section class="poster" aria-label="Apresentação da Santiago Barbearia">
-      <div class="poster__frame">
-        <p class="poster__eyebrow">Um bom corte merece seu tempo</p>
-        <div class="poster__rule" aria-hidden="true"></div>
-        <h1 class="poster__name">Santiago <span>Barbearia</span></h1>
-        <div class="poster__rule" aria-hidden="true"></div>
-        <p class="poster__tagline">Seu próximo horário começa aqui</p>
-      </div>
-    </section>
-
-    <section class="booking-page" aria-labelledby="booking-title">
-      <div class="booking-page__intro">
-        <p class="eyebrow">Agendamento · demonstração local</p>
-        <h2 id="booking-title">Seu próximo corte começa aqui.</h2>
-        <p>Escolha os serviços, o profissional e um horário para simular uma pré-reserva.</p>
-      </div>
-
-      <div class="booking-layout">
-        <div class="booking-form">
-          <section class="booking-step" aria-labelledby="services-title">
-            <h3 id="services-title">1. Quais serviços você quer?</h3>
-            <div id="serviceOptions" class="choice-grid" aria-label="Serviços">
-              <button type="button" class="choice is-selected" data-service="Cabelo" aria-pressed="true">Cabelo - R$30,00 <small>30 min</small></button>
-              <button type="button" class="choice" data-service="Barba" aria-pressed="false">Barba - R$25,00 <small>30 min</small></button>
-              <button type="button" class="choice" data-service="Sobrancelha" aria-pressed="false">Sobrancelha - R$20,00 <small>15 min</small></button>
-            </div>
-          </section>
-
-          <section class="booking-step" aria-labelledby="professionals-title">
-            <h3 id="professionals-title">2. Profissional <small>(opcional)</small></h3>
-            <div id="professionalOptions" class="choice-grid" aria-label="Profissional">
-              <button type="button" class="choice" data-professional="Santiago" aria-pressed="false">Santiago</button>
-              <button type="button" class="choice" data-professional="Damigo" aria-pressed="false">Damigo</button>
-            </div>
-          </section>
-
-          <section class="booking-step" aria-labelledby="dates-title">
-            <h3 id="dates-title">3. Quando fica bom?</h3>
-            <p class="help-text">Escolha um dia nos próximos 14 dias e depois um horário disponível.</p>
-            <div id="availableDates" class="date-list" aria-label="Datas disponíveis"></div>
-            <div id="availableTimes" class="time-list" aria-label="Horários disponíveis"></div>
-            <p id="availabilityMessage" class="help-text" role="status"></p>
-          </section>
+    <section class="capa" aria-labelledby="capa-titulo">
+      <div class="capa__interno">
+        <div class="logo">
+          <div class="arabescos"><span class="logo__emblema" aria-hidden="true"></span></div>
+          <hr class="logo__regua">
+          <h1 id="capa-titulo" class="logo__nome letreiro" data-marca="nomeCurto">Santiago</h1>
+          <p class="logo__complemento letreiro" data-marca="complemento">Barbearia</p>
+          <hr class="logo__regua">
+          <div class="arabescos logo__selo"><span class="faixa" data-marca="selo">Since 2017</span></div>
         </div>
 
-        <aside class="booking-sidebar" aria-labelledby="summary-title">
-          <div class="recurrence-control">
-            <label><input id="repeatBooking" type="checkbox"> Repetir este horário</label>
-            <label id="frequencyField" class="recurrence-control__frequency" hidden>
-              Frequência
-              <select id="bookingFrequency">
-                <option value="weekly">Toda semana · 4 datas</option>
-                <option value="fortnightly">A cada 15 dias · 4 datas</option>
-                <option value="monthly">Todo mês · 4 datas</option>
-              </select>
+        <p class="capa__slogan letreiro" data-marca="slogan">Você sempre pronto!</p>
+        <hr class="filete">
+        <p class="capa__chamada" data-marca="chamada">Marque já o seu horário</p>
+        <a class="botao botao--destaque capa__acao" href="#agendar">Escolher meu horário <span data-icone="seta"></span></a>
+        <p class="capa__local"><span data-icone="local"></span><span data-marca="endereco"></span></p>
+      </div>
+      <svg class="capa__rasgado" viewBox="0 0 400 24" preserveAspectRatio="none" aria-hidden="true"><path d="M0 24L0 8.9L5.055944217471513 12.8L9.562998224144312 11.4L16.12282064253241 5.7L23.674870774858352 5.4L30.710390560495053 5.8L35.34538165390211 10.1L45.133346526606374 6.5L50.69601927885547 12.5L61.32998187605452 11.9L68.10674519860999 16.7L72.43282396293428 15.3L78.46008896725601 6.7L83.28463463380459 8.7L92.99751914764481 7.2L101.06872029328207 12.7L107.67550309236219 11.6L112.11502591717546 5.7L117.55673690691074 13.2L124.54988304659656 8.8L132.64881609115002 10.4L138.7471850691958 14.5L147.64014610530282 7.9L155.6611120771135 11.3L165.7870745461275 13.8L171.80263890035883 16.8L176.62909934814357 10.0L185.9290858551003 6.8L193.35182755843095 5.5L202.02933855417172 14.2L210.0405201361134 15.5L216.23675272605007 13.3L224.3973418657852 12.0L231.5907791848951 15.1L242.20354685065067 10.7L250.85261228897338 5.7L259.76305643810434 12.8L270.7147280143708 14.9L276.70689673902984 9.6L285.3874657502192 5.3L292.61933275431755 7.0L297.43900331568966 5.7L306.8166342349973 6.6L312.5499380708757 9.7L322.64989188975983 6.0L329.79420369640513 11.6L339.9778904814957 14.8L350.02578176938533 8.3L356.9328573898672 9.3L367.1222071802547 16.5L372.17865352079247 7.1L377.80235158852923 7.8L385.19709070091875 12.1L391.03631703600854 5.0L397.9689425438858 9.4L400 10L400 24Z"/></svg>
+    </section>
+
+    <div class="agendamento" id="areaAgendamento">
+      <form id="agendar" class="fluxo" novalidate>
+        <section class="etapa" id="etapaServicos" aria-labelledby="t-servicos">
+          <header class="etapa__topo">
+            <span class="etapa__numero" aria-hidden="true">1</span>
+            <div>
+              <h2 id="t-servicos">O que vamos fazer?</h2>
+              <p>Escolha um ou mais serviços.</p>
+            </div>
+          </header>
+          <div id="servicos" class="servicos" role="group" aria-label="Serviços"></div>
+        </section>
+
+        <section class="etapa" id="etapaProfissional" aria-labelledby="t-profissional">
+          <header class="etapa__topo">
+            <span class="etapa__numero" aria-hidden="true">2</span>
+            <div>
+              <h2 id="t-profissional">Com quem?</h2>
+              <p>Sem preferência, a gente encaixa com quem estiver livre.</p>
+            </div>
+          </header>
+          <div id="profissionais" class="chips" role="group" aria-label="Profissional"></div>
+        </section>
+
+        <section class="etapa" id="etapaHorario" aria-labelledby="t-horario">
+          <header class="etapa__topo">
+            <span class="etapa__numero" aria-hidden="true">3</span>
+            <div>
+              <h2 id="t-horario">Quando fica bom?</h2>
+              <p id="t-horario-ajuda">Toque no dia e depois no horário.</p>
+            </div>
+          </header>
+          <div id="dias" class="dias" role="group" aria-label="Dias"></div>
+          <div id="horarios" class="horarios" aria-live="polite"></div>
+
+          <div class="repeticao">
+            <label class="alternador">
+              <span>
+                <span class="repeticao__titulo"><span data-icone="repetir"></span>Repetir este horário</span>
+                <small class="repeticao__dica">Para quem já tem dia certo na cadeira.</small>
+              </span>
+              <input id="repetir" type="checkbox" role="switch">
+            </label>
+
+            <div id="opcoesRepeticao" class="repeticao__opcoes" hidden>
+              <div class="chips" role="radiogroup" aria-label="Frequência">
+                <label class="chip"><input type="radio" name="frequencia" value="semanal" checked>Toda semana</label>
+                <label class="chip"><input type="radio" name="frequencia" value="quinzenal">A cada 15 dias</label>
+                <label class="chip"><input type="radio" name="frequencia" value="mensal">Todo mês</label>
+              </div>
+
+              <div class="repeticao__quantidade">
+                <span class="campo__rotulo" id="rotuloVezes">Quantos atendimentos?</span>
+                <div class="contador" role="group" aria-labelledby="rotuloVezes">
+                  <button type="button" class="contador__botao" id="menosVezes" aria-label="Menos um">−</button>
+                  <output id="vezes" class="contador__valor numeros" aria-live="polite">4</output>
+                  <button type="button" class="contador__botao" id="maisVezes" aria-label="Mais um">+</button>
+                </div>
+                <label class="chip chip--sem-fim"><input id="semFim" type="checkbox">Sem data para terminar</label>
+              </div>
+              <p id="datasRepeticao" class="repeticao__datas numeros"></p>
+            </div>
+          </div>
+        </section>
+
+        <section class="etapa" id="etapaDados" aria-labelledby="t-dados">
+          <header class="etapa__topo">
+            <span class="etapa__numero" aria-hidden="true">4</span>
+            <div>
+              <h2 id="t-dados">Seus dados</h2>
+              <p>Para a barbearia confirmar e lembrar você do horário.</p>
+            </div>
+          </header>
+          <div class="campos">
+            <label class="campo">
+              <span class="campo__rotulo">Nome</span>
+              <input id="nome" class="entrada" maxlength="80" autocomplete="name" enterkeyhint="next" required>
+              <span class="campo__erro"></span>
+            </label>
+            <label class="campo">
+              <span class="campo__rotulo">WhatsApp com DDD</span>
+              <input id="telefone" class="entrada numeros" type="tel" inputmode="tel" autocomplete="tel-national"
+                     placeholder="(00) 00000-0000" maxlength="15" enterkeyhint="done" required>
+              <span class="campo__erro"></span>
             </label>
           </div>
+          <p class="privacidade">Usamos seu nome e WhatsApp só para cuidar deste agendamento.</p>
+        </section>
+      </form>
 
-          <div class="booking-summary">
-            <p class="eyebrow">Sua solicitação</p>
-            <h3 id="summary-title">Um horário do seu jeito.</h3>
-            <dl>
-              <div><dt>Serviços</dt><dd id="summaryServices"></dd></div>
-              <div><dt>Profissional</dt><dd id="summaryProfessional"></dd></div>
-              <div><dt>Quando</dt><dd id="summaryDate"></dd></div>
-              <div><dt>Repetição</dt><dd id="summaryFrequency"></dd></div>
-            </dl>
+      <aside class="resumo capitone" aria-labelledby="t-resumo">
+        <h2 id="t-resumo" class="resumo__titulo">Seu horário</h2>
+        <dl class="resumo__lista">
+          <div><dt>Serviços</dt><dd id="resumoServicos"></dd></div>
+          <div><dt>Profissional</dt><dd id="resumoProfissional"></dd></div>
+          <div><dt>Quando</dt><dd id="resumoQuando" class="numeros"></dd></div>
+          <div><dt>Repetição</dt><dd id="resumoRepeticao"></dd></div>
+        </dl>
+        <div class="resumo__barra">
+          <p class="resumo__total">
+            <strong id="resumoPreco" class="numeros">R$ 0,00</strong>
+            <span id="resumoDuracao" class="numeros"></span>
+          </p>
+          <button id="confirmar" class="botao botao--destaque resumo__botao" type="submit" form="agendar">Escolha um horário</button>
+        </div>
+        <p id="erroEnvio" class="resumo__erro" role="alert"></p>
+      </aside>
+    </div>
 
-            <p class="booking-summary__notice">
-              <strong>Pré-reserva não é confirmação.</strong> Esta demonstração não envia a solicitação
-              à barbearia nem dispara mensagens pelo WhatsApp.
-            </p>
-
-            <div id="contactFields" class="contact-fields" hidden>
-              <label>Seu nome <input id="customerName" maxlength="80" autocomplete="name"></label>
-              <label>WhatsApp com DDD <input id="customerPhone" type="tel" maxlength="20" inputmode="tel" autocomplete="tel"></label>
-            </div>
-            <button id="submitRequest" class="primary-button" type="button" disabled>Escolha um dia</button>
-          </div>
-          <p class="demo-warning">Use somente dados fictícios. Tudo se perde ao recarregar esta página.</p>
-          <p id="requestFeedback" class="feedback" role="status"></p>
-        </aside>
+    <section id="confirmado" class="confirmado" aria-labelledby="t-confirmado" tabindex="-1" hidden>
+      <div class="confirmado__selo"><span data-icone="check"></span></div>
+      <h2 id="t-confirmado">Horário marcado</h2>
+      <p id="confirmadoTexto" class="confirmado__texto"></p>
+      <dl id="confirmadoDetalhes" class="confirmado__detalhes"></dl>
+      <div class="confirmado__acoes">
+        <button id="novoAgendamento" class="botao botao--enfase botao--largo" type="button">Marcar outro horário</button>
+        <a id="falarBarbearia" class="botao botao--contorno botao--largo" target="_blank" rel="noopener" hidden>
+          <span data-icone="mensagem"></span>Falar com a barbearia
+        </a>
+        <a class="botao botao--contorno botao--largo" href="/loja"><span data-icone="sacola"></span>Ver produtos da loja</a>
       </div>
     </section>
   </main>
+
+  <footer class="rodape">
+    <div class="xadrez" aria-hidden="true"></div>
+    <div class="rodape__marca">
+      <span class="marca__emblema" aria-hidden="true"></span>
+      <span class="rodape__nome" data-marca="nome">Santiago Barbearia</span>
+      <span data-marca="endereco"></span>
+    </div>
+    <div class="rodape__contatos">
+      <a data-link="whatsapp" target="_blank" rel="noopener"><span data-icone="mensagem"></span><span data-texto></span></a>
+      <a data-link="instagram" target="_blank" rel="noopener"><span data-icone="instagram"></span><span data-texto></span></a>
+    </div>
+  </footer>
 </body>
 </html>
