@@ -16,7 +16,6 @@
   background: var(--imagem-capa) center 30% / cover no-repeat;
   filter: grayscale(.3) sepia(.25) brightness(.62);
   transform: scale(1.04);
-  animation: capa-respira 18s ease-in-out infinite alternate;
 }
 
 .capa::after {
