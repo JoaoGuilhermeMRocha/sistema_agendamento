@@ -47,7 +47,7 @@
         <hr class="filete">
         <p class="capa__chamada" data-marca="chamada">Marque já o seu horário</p>
         <a class="botao botao--destaque capa__acao" href="#agendar">Escolher meu horário <span data-icone="seta"></span></a>
-        <p class="capa__local"><span data-icone="local"></span><span data-marca="endereco"></span></p>
+        <a class="link-mapa capa__local" data-link="mapa" target="_blank" rel="noopener"><span data-icone="local"></span><span data-texto></span></a>
       </div>
       <svg class="capa__rasgado" viewBox="0 0 400 24" preserveAspectRatio="none" aria-hidden="true"><path d="M0 24L0 8.9L5.055944217471513 12.8L9.562998224144312 11.4L16.12282064253241 5.7L23.674870774858352 5.4L30.710390560495053 5.8L35.34538165390211 10.1L45.133346526606374 6.5L50.69601927885547 12.5L61.32998187605452 11.9L68.10674519860999 16.7L72.43282396293428 15.3L78.46008896725601 6.7L83.28463463380459 8.7L92.99751914764481 7.2L101.06872029328207 12.7L107.67550309236219 11.6L112.11502591717546 5.7L117.55673690691074 13.2L124.54988304659656 8.8L132.64881609115002 10.4L138.7471850691958 14.5L147.64014610530282 7.9L155.6611120771135 11.3L165.7870745461275 13.8L171.80263890035883 16.8L176.62909934814357 10.0L185.9290858551003 6.8L193.35182755843095 5.5L202.02933855417172 14.2L210.0405201361134 15.5L216.23675272605007 13.3L224.3973418657852 12.0L231.5907791848951 15.1L242.20354685065067 10.7L250.85261228897338 5.7L259.76305643810434 12.8L270.7147280143708 14.9L276.70689673902984 9.6L285.3874657502192 5.3L292.61933275431755 7.0L297.43900331568966 5.7L306.8166342349973 6.6L312.5499380708757 9.7L322.64989188975983 6.0L329.79420369640513 11.6L339.9778904814957 14.8L350.02578176938533 8.3L356.9328573898672 9.3L367.1222071802547 16.5L372.17865352079247 7.1L377.80235158852923 7.8L385.19709070091875 12.1L391.03631703600854 5.0L397.9689425438858 9.4L400 10L400 24Z"/></svg>
     </section>
@@ -86,35 +86,6 @@
           </header>
           <div id="dias" class="dias" role="group" aria-label="Dias"></div>
           <div id="horarios" class="horarios" aria-live="polite"></div>
-
-          <div class="repeticao">
-            <label class="alternador">
-              <span>
-                <span class="repeticao__titulo"><span data-icone="repetir"></span>Repetir este horário</span>
-                <small class="repeticao__dica">Para quem já tem dia certo na cadeira.</small>
-              </span>
-              <input id="repetir" type="checkbox" role="switch">
-            </label>
-
-            <div id="opcoesRepeticao" class="repeticao__opcoes" hidden>
-              <div class="chips" role="radiogroup" aria-label="Frequência">
-                <label class="chip"><input type="radio" name="frequencia" value="semanal" checked>Toda semana</label>
-                <label class="chip"><input type="radio" name="frequencia" value="quinzenal">A cada 15 dias</label>
-                <label class="chip"><input type="radio" name="frequencia" value="mensal">Todo mês</label>
-              </div>
-
-              <div class="repeticao__quantidade">
-                <span class="campo__rotulo" id="rotuloVezes">Quantos atendimentos?</span>
-                <div class="contador" role="group" aria-labelledby="rotuloVezes">
-                  <button type="button" class="contador__botao" id="menosVezes" aria-label="Menos um">−</button>
-                  <output id="vezes" class="contador__valor numeros" aria-live="polite">4</output>
-                  <button type="button" class="contador__botao" id="maisVezes" aria-label="Mais um">+</button>
-                </div>
-                <label class="chip chip--sem-fim"><input id="semFim" type="checkbox">Sem data para terminar</label>
-              </div>
-              <p id="datasRepeticao" class="repeticao__datas numeros"></p>
-            </div>
-          </div>
         </section>
 
         <section class="etapa" id="etapaDados" aria-labelledby="t-dados">
@@ -148,7 +119,6 @@
           <div><dt>Serviços</dt><dd id="resumoServicos"></dd></div>
           <div><dt>Profissional</dt><dd id="resumoProfissional"></dd></div>
           <div><dt>Quando</dt><dd id="resumoQuando" class="numeros"></dd></div>
-          <div><dt>Repetição</dt><dd id="resumoRepeticao"></dd></div>
         </dl>
         <div class="resumo__barra">
           <p class="resumo__total">
@@ -181,11 +151,12 @@
     <div class="rodape__marca">
       <span class="marca__emblema" aria-hidden="true"></span>
       <span class="rodape__nome" data-marca="nome">Santiago Barbearia</span>
-      <span data-marca="endereco"></span>
+      
     </div>
     <div class="rodape__contatos">
       <a data-link="whatsapp" target="_blank" rel="noopener"><span data-icone="mensagem"></span><span data-texto></span></a>
       <a data-link="instagram" target="_blank" rel="noopener"><span data-icone="instagram"></span><span data-texto></span></a>
+      <a class="link-mapa" data-link="mapa" target="_blank" rel="noopener"><span data-icone="local"></span><span data-texto></span></a>
     </div>
   </footer>
 </body>

@@ -1,0 +1,161 @@
+/* Aba Relatórios: filtros, indicadores, gráfico, tabela e a versão impressa (PDF). */
+
+.relatorio__topo { grid-template-columns: minmax(0, 1fr); }
+.relatorio__exportar { display: flex; flex-wrap: wrap; gap: 8px; }
+.relatorio__exportar .icone { width: 18px; height: 18px; }
+
+/* Filtros numa faixa só, acima de tudo o que eles afetam. */
+.relatorio__filtros { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.relatorio__filtros .campo:first-child { grid-column: 1 / -1; }
+
+.relatorio__periodo { color: var(--cor-texto-suave); font-size: 14px; }
+.relatorio__periodo strong { color: var(--cor-texto); }
+
+.relatorio__impressao { display: none; }
+
+/* Indicadores: valor grande em algarismos proporcionais, variação com seta e texto. */
+.indicadores { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.indicador:last-child:nth-child(odd) { grid-column: 1 / -1; }
+
+.indicador {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--cor-linha);
+  border-radius: var(--raio-m);
+  background: var(--cor-superficie);
+}
+
+.indicador__rotulo { color: var(--cor-texto-suave); font-size: 13px; font-weight: 600; }
+.indicador__valor { overflow: hidden; font-size: 22px; font-weight: 800; line-height: 1.15; text-overflow: ellipsis; white-space: nowrap; }
+.indicador__variacao { color: var(--cor-texto-suave); font-size: 12px; font-weight: 600; }
+.indicador__variacao--sobe { color: var(--cor-sucesso); }
+.indicador__variacao--desce { color: var(--cor-perigo); }
+
+.relatorio__painel { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+.relatorio__controles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.relatorio__tipos { grid-column: 1 / -1; }
+.relatorio__tipos .chip { min-height: 38px; padding: 0 14px; font-size: 14px; }
+.chip:has(input:disabled) { opacity: .4; cursor: not-allowed; }
+.relatorio__titulo { font-size: 18px; }
+.relatorio__nota { font-size: 13px; }
+
+/* Gráfico */
+
+.grafico { position: relative; min-width: 0; }
+.grafico svg { display: block; max-width: 100%; height: auto; overflow: visible; font-family: var(--fonte-texto); }
+
+.grafico__grade { stroke: var(--cor-linha); stroke-width: 1; }
+.grafico__base { stroke: var(--cor-linha-forte); stroke-width: 1; }
+.grafico__eixo { fill: var(--cor-texto-suave); font-size: 11px; font-weight: 600; }
+.grafico__nome { fill: var(--cor-texto); font-size: 12px; font-weight: 600; }
+.grafico__valor { fill: var(--cor-texto); font-size: 12px; font-weight: 800; }
+.grafico__total { fill: var(--cor-texto); font-size: 18px; font-weight: 800; }
+
+.grafico__marca path { fill: var(--cor-grafico); transition: filter .15s; }
+.grafico__marca--ativa path { filter: brightness(1.2); }
+.grafico__alvo { fill: transparent; cursor: default; outline: none; }
+.grafico__alvo:focus-visible { stroke: var(--cor-destaque); stroke-width: 2; }
+
+.grafico__linha { fill: none; stroke: var(--cor-grafico); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.grafico__area { fill: var(--cor-grafico); fill-opacity: .1; }
+.grafico__ponto { fill: var(--cor-grafico); stroke: var(--cor-superficie); stroke-width: 2; }
+.grafico__mira { stroke: var(--cor-linha-forte); stroke-width: 1; }
+
+/* Rosca: o vão entre as fatias é a cor do fundo, não uma borda. */
+.grafico--rosca { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 20px 36px; }
+.grafico--rosca svg { overflow: hidden; }
+.grafico__fatia { stroke: var(--cor-superficie); stroke-width: 2; }
+.grafico__marca:focus-visible { outline: none; }
+.grafico__marca:focus-visible .grafico__fatia { stroke: var(--cor-destaque); }
+
+.grafico__legenda { display: grid; gap: 8px; min-width: min(100%, 240px); margin: 0; padding: 0; list-style: none; font-size: 14px; }
+.grafico__legenda li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 10px; }
+.grafico__legenda-nome { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.grafico__legenda-parte { min-width: 3ch; color: var(--cor-texto-suave); text-align: right; }
+.grafico__chave { display: inline-block; flex: none; width: 10px; height: 10px; border-radius: 3px; }
+
+.grafico__dica {
+  position: absolute;
+  z-index: 5;
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--cor-linha-forte);
+  border-radius: 10px;
+  background: var(--cor-barra);
+  color: var(--cor-barra-texto);
+  box-shadow: var(--sombra-2);
+  font-size: 13px;
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translate(-50%, calc(-100% - 8px));
+}
+
+.grafico__dica strong { font-size: 15px; }
+.grafico__dica span { display: flex; align-items: center; gap: 6px; color: var(--cor-texto-suave); }
+.grafico__vazio { padding: 40px 0; color: var(--cor-texto-suave); text-align: center; }
+
+/* Tabela: a mesma informação do gráfico, sem depender de cor nem de passar o mouse. */
+
+.tabela-rolagem { max-height: 520px; overflow: auto; overscroll-behavior: contain; }
+.tabela { width: 100%; border-collapse: collapse; font-size: 14px; }
+.tabela th, .tabela td { padding: 10px 8px; border-bottom: 1px solid var(--cor-linha); text-align: left; white-space: nowrap; }
+.tabela thead th {
+  position: sticky;
+  top: 0;
+  background: var(--cor-superficie);
+  color: var(--cor-texto-suave);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.tabela .numeros { text-align: right; }
+.tabela tbody th { font-weight: 600; }
+.tabela tfoot th, .tabela tfoot td { border-bottom: 0; border-top: 2px solid var(--cor-linha-forte); font-weight: 800; }
+.tabela__nome { display: inline-flex; align-items: center; gap: 8px; }
+.tabela__nome .icone { width: 16px; height: 16px; }
+.tabela__vazia { padding: 28px 8px; color: var(--cor-texto-suave); text-align: center !important; }
+
+@media (min-width: 600px) {
+  .relatorio__topo { grid-template-columns: 1fr auto; align-items: center; }
+  .indicadores { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+  .indicador:last-child:nth-child(odd) { grid-column: auto; }
+  .relatorio__controles { grid-template-columns: repeat(2, minmax(0, 220px)) minmax(0, 1fr); align-items: end; }
+  .relatorio__tipos { grid-column: auto; }
+}
+
+@media (min-width: 900px) {
+  .relatorio__filtros { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+  .relatorio__filtros .campo:first-child { grid-column: auto; }
+  .indicador__valor { font-size: 26px; }
+}
+
+/* PDF: só o relatório, em papel branco (as cores de impressão estão no tema.css). */
+@media print {
+  @page { margin: 14mm; }
+  body { padding: 0; background: var(--cor-fundo); }
+  body::before, .topo, .abas, .painel__rodape, .relatorio__filtros, #relErro, .relatorio__controles,
+  .relatorio__exportar, .aviso, .pular, .grafico__dica { display: none !important; }
+  .painel { max-width: none; padding: 0; }
+  .secao { animation: none; gap: 14px; }
+  .relatorio__impressao { display: grid; gap: 4px; }
+  .relatorio__marca { font-family: var(--fonte-titulo); font-size: 20px; font-weight: 800; }
+  .relatorio__impressao-filtros { color: var(--cor-texto-suave); font-size: 12px; }
+  .indicadores { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .indicador:last-child:nth-child(odd) { grid-column: auto; }
+  .indicador { padding: 10px; }
+  .indicador__valor { font-size: 15px; white-space: normal; }
+  .cartao { box-shadow: none; }
+  /* O gráfico fica inteiro numa página; a tabela pode continuar na seguinte. */
+  .relatorio__painel:has(#relGrafico) { break-inside: avoid; }
+  .tabela-rolagem { max-height: none; overflow: visible; }
+  .tabela thead th { position: static; }
+  /* Sem isso o navegador repete o "Total" no pé de cada página, como se fosse parcial. */
+  .tabela tfoot { display: table-row-group; }
+  .tabela th, .tabela td { padding: 6px; font-size: 12px; }
+  .relatorio__nota { display: none; }
+  * { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+}

@@ -3,11 +3,17 @@
 // As validações daqui são as mesmas que o servidor vai ter que repetir.
 import { config } from "./config.js";
 import {
-  chaveValida, datasDaSerie, escolherProfissional, minutos, profissionalPorId, somarServicos
+  chaveValida, datasDaSerie, escolherProfissional, formatarData, inicioDaRecorrencia, minutos, profissionalLivre,
+  profissionalPorId, servicosAtivos, somarServicos
 } from "./agenda.js";
 
 const CHAVE = `agenda:${config.slug}:v1`;
 const FREQUENCIAS_VALIDAS = ["nenhuma", "semanal", "quinzenal", "mensal"];
+// Símbolos que um serviço pode ter na agenda (nomes dos ícones de ui.js).
+export const ICONES_DE_SERVICO = {
+  tesoura: "Corte", barba: "Barba", sobrancelha: "Sobrancelha", navalha: "Navalha",
+  pente: "Penteado", gota: "Tratamento", estrela: "Outro"
+};
 
 function estadoInicial() {
   return {
@@ -20,8 +26,12 @@ function estadoInicial() {
   };
 }
 
-// Profissional novo no config.js começa com o expediente padrão.
+// Dados salvos antes de existir algo novo no modelo ganham o valor inicial do config.js.
 function completar(estado) {
+  estado.servicos ??= config.servicosIniciais.map(servico => ({ ...servico }));
+  for (const servico of estado.servicos) {
+    servico.icone ??= config.servicosIniciais.find(item => item.id === servico.id)?.icone ?? "tesoura";
+  }
   for (const { id } of config.profissionais) {
     estado.expedientes[id] ??= structuredClone(config.expedientePadrao);
   }
@@ -71,6 +81,15 @@ export function apagarTudo() {
   localStorage.removeItem(CHAVE);
 }
 
+// Troca todos os atendimentos pelos de exemplo (exemplo.js). Ferramenta de teste e demonstração:
+// grava direto, sem as travas de horário no passado, porque o exemplo inclui meses que já passaram.
+export function carregarExemplo(agendamentos) {
+  return alterar(estado => {
+    estado.agendamentos = agendamentos.map(agendamento => ({ ...agendamento, id: proximoId(estado) }));
+    return { ok: true, total: agendamentos.length };
+  });
+}
+
 /* Agendamentos */
 
 function normalizarRepeticao(repeticao = {}) {
@@ -88,12 +107,16 @@ export function criarAgendamento({ nome, telefone, servicos, profissionalId, dat
     if (cliente.nome.length < 2) return falha("Informe o nome do cliente.");
     if (!/^\d{10,11}$/.test(cliente.telefone)) return falha("Informe um WhatsApp com DDD.");
 
-    const soma = somarServicos(Array.isArray(servicos) ? servicos : []);
+    const ids = Array.isArray(servicos) ? [...new Set(servicos)] : [];
+    const ativos = new Set(servicosAtivos(estado).map(servico => servico.id));
+    if (ids.some(id => !ativos.has(id))) return falha("Um dos serviços não está mais disponível. Recarregue a página.");
+    const soma = somarServicos(estado, ids);
     if (!soma.lista.length) return falha("Escolha pelo menos um serviço.");
     if (profissionalId && !profissionalPorId(profissionalId)) return falha("Profissional inválido.");
     if (!chaveValida(data) || !horaValida(inicio)) return falha("Escolha o dia e o horário.");
 
-    const regra = normalizarRepeticao(repeticao);
+    // Só o painel cria repetição: o que vier do site vira um atendimento único.
+    const regra = normalizarRepeticao(origem === "painel" ? repeticao : undefined);
     if (!regra) return falha("Número de atendimentos inválido.");
     const datas = datasDaSerie(data, regra);
 
@@ -131,6 +154,57 @@ export function cancelarData(id, data) {
       agendamento.excecoes.push(data);
     }
     return { ok: true };
+  });
+}
+
+// Um atendimento avulso passa a se repetir com o mesmo cliente, serviços, profissional e horário.
+// Se ele já passou, fica como está e a série nasce num novo agendamento, na próxima data da regra.
+export function tornarRecorrente(id, repeticao) {
+  return alterar(estado => {
+    const original = estado.agendamentos.find(item => item.id === id);
+    if (!original) return falha("Agendamento não encontrado.");
+    if (original.repeticao.frequencia !== "nenhuma") return falha("Este atendimento já se repete.");
+    const regra = normalizarRepeticao(repeticao);
+    if (!regra) return falha("Número de atendimentos inválido.");
+    if (regra.frequencia === "nenhuma") return falha("Escolha de quanto em quanto tempo ele se repete.");
+
+    const ativos = new Set(servicosAtivos(estado).map(servico => servico.id));
+    if (original.servicos.some(servico => !ativos.has(servico))) {
+      return falha("Um dos serviços deste atendimento foi removido. Marque um novo horário pela aba Novo.");
+    }
+
+    const primeira = inicioDaRecorrencia(original, regra.frequencia);
+    const noProprio = primeira === original.data;
+    const datas = datasDaSerie(primeira, regra);
+    const soma = somarServicos(estado, original.servicos);
+    const duracao = noProprio ? original.duracao : soma.duracao;
+    const ocupadas = (noProprio ? datas.slice(1) : datas).filter(data =>
+      !profissionalLivre(estado, original.profissionalId, data, minutos(original.inicio), duracao));
+    if (ocupadas.length) {
+      const lista = ocupadas.slice(0, 3).map(data => formatarData(data)).join(", ");
+      const resto = ocupadas.length > 3 ? ` e mais ${ocupadas.length - 3}` : "";
+      return falha(`${profissionalPorId(original.profissionalId).nome} não está livre em ${lista}${resto}. ` +
+        "Tente outra frequência ou menos atendimentos.");
+    }
+
+    if (noProprio) {
+      original.repeticao = regra;
+      return { ok: true, agendamento: original, datas };
+    }
+    const agendamento = {
+      ...structuredClone(original),
+      id: proximoId(estado),
+      data: primeira,
+      duracao: soma.duracao,
+      preco: soma.preco,
+      repeticao: regra,
+      excecoes: [],
+      ate: null,
+      origem: "painel",
+      criadoEm: new Date().toISOString()
+    };
+    estado.agendamentos.push(agendamento);
+    return { ok: true, agendamento, datas };
   });
 }
 
@@ -214,6 +288,65 @@ export function removerAusencia(id) {
 export function removerBloqueio(id) {
   return alterar(estado => {
     estado.bloqueios = estado.bloqueios.filter(item => item.id !== id);
+    return { ok: true };
+  });
+}
+
+/* Serviços */
+
+function camposDoServico(estado, id, { nome, preco, duracao, icone }) {
+  const texto = String(nome ?? "").trim();
+  const valor = String(preco ?? "").trim() === "" ? NaN : Number(preco);
+  const minutosServico = Number(duracao);
+  const passo = config.agenda.intervaloMinutos;
+  if (!texto) return falha("Informe o nome do serviço.");
+  if (servicosAtivos(estado).some(servico => servico.id !== id && servico.nome.toLowerCase() === texto.toLowerCase())) {
+    return falha("Já existe um serviço com esse nome.");
+  }
+  if (!Number.isFinite(valor) || valor < 0) return falha("Informe o preço do serviço.");
+  if (!Number.isInteger(minutosServico) || minutosServico < passo || minutosServico > 480 || minutosServico % passo) {
+    return falha("Escolha a duração do serviço.");
+  }
+  return {
+    ok: true,
+    campos: {
+      nome: texto.slice(0, 60),
+      preco: Math.round(valor * 100) / 100,
+      duracao: minutosServico,
+      icone: Object.hasOwn(ICONES_DE_SERVICO, icone) ? icone : "tesoura"
+    }
+  };
+}
+
+export function criarServico(dados) {
+  return alterar(estado => {
+    const validacao = camposDoServico(estado, null, dados);
+    if (!validacao.ok) return validacao;
+    estado.servicos.push({ id: String(proximoId(estado)), ...validacao.campos });
+    return { ok: true };
+  });
+}
+
+// Vale para os próximos agendamentos: os já marcados guardam o preço e a duração da época.
+export function atualizarServico(id, dados) {
+  return alterar(estado => {
+    const servico = servicosAtivos(estado).find(item => item.id === id);
+    if (!servico) return falha("Esse serviço não existe mais.");
+    const validacao = camposDoServico(estado, id, dados);
+    if (!validacao.ok) return validacao;
+    Object.assign(servico, validacao.campos);
+    return { ok: true };
+  });
+}
+
+// Só marca como removido, para os atendimentos antigos continuarem mostrando o nome.
+export function removerServico(id) {
+  return alterar(estado => {
+    const ativos = servicosAtivos(estado);
+    const servico = ativos.find(item => item.id === id);
+    if (!servico) return falha("Esse serviço não existe mais.");
+    if (ativos.length === 1) return falha("Mantenha pelo menos um serviço para os clientes escolherem.");
+    servico.removido = true;
     return { ok: true };
   });
 }

@@ -105,13 +105,7 @@
 
 .capa__acao { margin-top: 4px; padding-inline: 26px; }
 
-.capa__local {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--cor-texto-suave);
-  font-size: 14px;
-}
+.capa__local { font-size: 14px; }
 
 @keyframes capa-respira { to { transform: scale(1.12); } }
 
@@ -302,53 +296,6 @@
   .servico:hover, .dia:hover:not(:disabled):not([aria-pressed="true"]),
   .horario:hover:not([aria-pressed="true"]) { border-color: var(--cor-linha-forte); }
 }
-
-/* Repetição */
-
-.repeticao {
-  margin-top: 24px;
-  padding: 16px 18px;
-  border-radius: var(--raio-m);
-  background: var(--cor-superficie-2);
-}
-
-.repeticao__titulo { display: flex; align-items: center; gap: 8px; }
-.repeticao__dica { display: block; margin-top: 2px; color: var(--cor-texto-suave); font-size: 13px; font-weight: 500; }
-
-.repeticao__opcoes {
-  display: grid;
-  gap: 16px;
-  margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid var(--cor-linha-forte);
-  animation: surge .3s var(--mola);
-}
-
-.repeticao__quantidade { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
-.repeticao__quantidade .campo__rotulo { width: 100%; }
-.repeticao__datas { color: var(--cor-texto-suave); font-size: 14px; }
-.repeticao__datas:empty { display: none; }
-
-.contador {
-  display: inline-flex;
-  align-items: center;
-  border: 1px solid var(--cor-linha-forte);
-  border-radius: 999px;
-  background: var(--cor-superficie);
-}
-
-.contador__botao {
-  width: 44px;
-  height: 42px;
-  border: 0;
-  border-radius: 999px;
-  background: none;
-  font-size: 22px;
-  line-height: 1;
-}
-
-.contador__botao:disabled { opacity: .3; cursor: not-allowed; }
-.contador__valor { min-width: 30px; font-size: 17px; font-weight: 800; text-align: center; }
 
 /* Dados do cliente */
 

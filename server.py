@@ -10,8 +10,9 @@ PAGES = {
 }
 # Só estes arquivos são entregues; o resto da pasta (server.py, .git...) fica de fora.
 ASSETS = [
-    "tema.css", "base.css", "agendar.css", "loja.css", "barbeiros.css",
+    "tema.css", "base.css", "agendar.css", "loja.css", "barbeiros.css", "relatorios.css",
     "config.js", "agenda.js", "dados.js", "ui.js", "agendar.js", "loja.js", "barbeiros.js",
+    "relatorios.js", "graficos.js", "exemplo.js",
     "favicon.svg",
 ]
 CONTENT_TYPES = {

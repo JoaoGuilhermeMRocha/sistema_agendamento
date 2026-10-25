@@ -37,6 +37,28 @@
   --cor-perigo-suave: #3a211b;
   --cor-sucesso: #8dbb84;
 
+  /* Cor de cada símbolo de serviço na agenda: dá para reconhecer o serviço só pela cor.
+     Sem vermelho (é o alerta de conflito) e sem o dourado do destaque. */
+  --cor-icone-tesoura: #f4c542;
+  --cor-icone-barba: #3fd0c4;
+  --cor-icone-sobrancelha: #c39bff;
+  --cor-icone-navalha: #ff74a8;
+  --cor-icone-pente: #8fdc6e;
+  --cor-icone-gota: #69a7ff;
+  --cor-icone-estrela: #ff9a3d;
+
+  /* Gráficos dos relatórios, validados contra --cor-superficie (dataviz: faixa de luminosidade,
+     daltonismo e contraste). Uma série usa --cor-grafico; a rosca usa as categorias nesta ordem
+     fixa, sempre a mesma para cada profissional ou serviço, e o resto vira "Outros". */
+  --cor-grafico: #b8862a;
+  --cor-grafico-1: #3987e5;
+  --cor-grafico-2: #d95926;
+  --cor-grafico-3: #199e70;
+  --cor-grafico-4: #c98500;
+  --cor-grafico-5: #d55181;
+  --cor-grafico-6: #008300;
+  --cor-grafico-outros: #6e665b;
+
   /* Matiz das sombras, em RGB. */
   --sombra-rgb: 0 0 0;
   --sombra-forca: 4;
@@ -49,4 +71,32 @@
   /* Piso quadriculado do salão. */
   --cor-xadrez-a: #b9a27b;
   --cor-xadrez-b: #4a3a28;
+}
+
+/* Impressão (PDF dos relatórios): papel branco, tinta escura e as mesmas cores em tons para fundo claro. */
+@media print {
+  :root {
+    color-scheme: light;
+    --cor-fundo: #ffffff;
+    --cor-superficie: #ffffff;
+    --cor-superficie-2: #f4f1ec;
+    --cor-texto: #1b1714;
+    --cor-texto-suave: #5c5349;
+    --cor-linha: #e3ddd3;
+    --cor-linha-forte: #c8bfb1;
+    --cor-destaque: #9a6c12;
+    --cor-destaque-forte: #7d560c;
+    --cor-barra: #ffffff;
+    --cor-barra-texto: #1b1714;
+    --cor-perigo: #b3361f;
+    --cor-sucesso: #2e7d32;
+    --cor-grafico: #9a6c12;
+    --cor-grafico-1: #2a78d6;
+    --cor-grafico-2: #eb6834;
+    --cor-grafico-3: #1baf7a;
+    --cor-grafico-4: #eda100;
+    --cor-grafico-5: #e87ba4;
+    --cor-grafico-6: #008300;
+    --cor-grafico-outros: #b3aa9d;
+  }
 }

@@ -477,6 +477,25 @@ input[type="file"].entrada { padding: 10px; font-size: 14px; }
 .rodape__marca .marca__emblema { width: 48px; height: 48px; }
 .rodape__nome { color: var(--cor-texto); font-family: var(--fonte-letreiro); font-size: 20px; text-transform: uppercase; }
 
+/* Endereço que abre o Google Maps (capa e rodapé) */
+.link-mapa {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--cor-linha-forte);
+  border-radius: 999px;
+  color: var(--cor-texto);
+  font-weight: 700;
+  text-decoration: none;
+  transition: border-color .2s, color .2s;
+}
+
+@media (hover: hover) {
+  .link-mapa:hover { color: var(--cor-destaque-forte); text-decoration-color: currentColor; }
+}
+
 .rodape__contatos { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; padding: 0 var(--margem); }
 .rodape__contatos a {
   display: inline-flex;

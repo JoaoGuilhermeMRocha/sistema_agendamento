@@ -1,7 +1,7 @@
 import { config } from "./config.js";
 import {
-  datasDaSerie, descreverMensal, descreverRepeticao, diaFechado, formatarData, formatarMoeda, hoje,
-  horariosLivres, profissionalPorId, somarDias, somarServicos
+  diaFechado, formatarData, formatarMoeda, hoje,
+  horariosLivres, profissionalPorId, servicosAtivos, somarDias, somarServicos
 } from "./agenda.js";
 import { aoMudar, carregar, criarAgendamento } from "./dados.js";
 import {
@@ -11,28 +11,29 @@ import {
 
 const campos = {
   nome: $("#nome"),
-  telefone: $("#telefone"),
-  repetir: $("#repetir"),
-  semFim: $("#semFim")
+  telefone: $("#telefone")
 };
 
 const escolha = {
-  servicos: [config.servicos[0].id],
+  servicos: [],
   profissionalId: null,
   data: null,
-  horario: null,
-  repeticao: { frequencia: "nenhuma", vezes: 1 }
+  horario: null
 };
-let vezesEscolhidas = 4;
+// Repetição só se cria pelo painel; pelo site o cliente marca um atendimento por vez.
+const SEM_REPETICAO = { frequencia: "nenhuma", vezes: 1 };
 let estado = carregar();
 
-const soma = () => somarServicos(escolha.servicos);
+const soma = () => somarServicos(estado, escolha.servicos);
 const pronto = () => escolha.servicos.length && escolha.data && escolha.horario;
 
 /* Etapa 1: serviços */
 
 function desenharServicos() {
-  $("#servicos").replaceChildren(...config.servicos.map(servico => el("button", {
+  // O painel pode ter removido um serviço que estava escolhido.
+  const ativos = servicosAtivos(estado);
+  escolha.servicos = escolha.servicos.filter(id => ativos.some(servico => servico.id === id));
+  $("#servicos").replaceChildren(...ativos.map(servico => el("button", {
     type: "button",
     class: "servico",
     "data-servico": servico.id,
@@ -50,7 +51,7 @@ $("#servicos").addEventListener("click", evento => {
   const id = botao.dataset.servico;
   escolha.servicos = escolha.servicos.includes(id)
     ? escolha.servicos.filter(item => item !== id)
-    : config.servicos.map(servico => servico.id).filter(item => item === id || escolha.servicos.includes(item));
+    : servicosAtivos(estado).map(servico => servico.id).filter(item => item === id || escolha.servicos.includes(item));
   botao.setAttribute("aria-pressed", String(escolha.servicos.includes(id)));
   atualizarAgenda();
 });
@@ -77,7 +78,7 @@ $("#profissionais").addEventListener("click", evento => {
   atualizarAgenda();
 });
 
-/* Etapa 3: dia, horário e repetição */
+/* Etapa 3: dia e horário */
 
 function rotuloDia(data) {
   if (data === hoje()) return "Hoje";
@@ -86,10 +87,11 @@ function rotuloDia(data) {
 }
 
 function desenharDias() {
-  const { duracao } = soma();
+  // Sem serviço escolhido, os dias usam o serviço mais curto para não aparecerem todos como lotados.
+  const duracao = soma().duracao || Math.min(...servicosAtivos(estado).map(servico => servico.duracao));
   const dias = Array.from({ length: config.agenda.diasParaAgendar }, (_, indice) => somarDias(hoje(), indice));
   const livres = new Map(dias.map(data => [data, horariosLivres(estado, {
-    data, repeticao: escolha.repeticao, duracao, profissionalId: escolha.profissionalId
+    data, repeticao: SEM_REPETICAO, duracao, profissionalId: escolha.profissionalId
   })]));
 
   if (escolha.data && !livres.get(escolha.data)?.length) escolha.data = null;
@@ -129,10 +131,7 @@ function desenharHorarios(horarios) {
     return;
   }
   if (!escolha.data) {
-    const repetindo = escolha.repeticao.frequencia !== "nenhuma";
-    area.replaceChildren(el("p", { class: "horarios__aviso" }, repetindo
-      ? "Nenhum horário fica livre em todas as datas dessa repetição. Tente outra frequência, menos atendimentos ou outro profissional."
-      : "Nenhum horário livre nos próximos dias. Tente outro profissional."));
+    area.replaceChildren(el("p", { class: "horarios__aviso" }, "Nenhum horário livre nos próximos dias. Tente outro profissional."));
     return;
   }
 
@@ -172,47 +171,6 @@ $("#horarios").addEventListener("click", evento => {
   desenharResumo();
 });
 
-function lerRepeticao() {
-  const frequencia = campos.repetir.checked
-    ? document.querySelector('input[name="frequencia"]:checked').value : "nenhuma";
-  escolha.repeticao = frequencia === "nenhuma"
-    ? { frequencia, vezes: 1 }
-    : { frequencia, vezes: campos.semFim.checked ? null : vezesEscolhidas };
-
-  $("#opcoesRepeticao").hidden = !campos.repetir.checked;
-  $("#vezes").textContent = campos.semFim.checked ? "∞" : vezesEscolhidas;
-  $("#menosVezes").disabled = campos.semFim.checked || vezesEscolhidas <= 2;
-  $("#maisVezes").disabled = campos.semFim.checked || vezesEscolhidas >= config.agenda.maxAtendimentosRepetidos;
-  atualizarAgenda();
-}
-
-function alterarVezes(diferenca) {
-  vezesEscolhidas = Math.min(config.agenda.maxAtendimentosRepetidos, Math.max(2, vezesEscolhidas + diferenca));
-  lerRepeticao();
-}
-
-campos.repetir.addEventListener("change", lerRepeticao);
-campos.semFim.addEventListener("change", lerRepeticao);
-$("#opcoesRepeticao").addEventListener("change", evento => {
-  if (evento.target.name === "frequencia") lerRepeticao();
-});
-$("#menosVezes").addEventListener("click", () => alterarVezes(-1));
-$("#maisVezes").addEventListener("click", () => alterarVezes(1));
-
-function desenharDatasRepeticao() {
-  const alvo = $("#datasRepeticao");
-  if (escolha.repeticao.frequencia === "nenhuma" || !escolha.data) {
-    alvo.textContent = "";
-    return;
-  }
-  const datas = datasDaSerie(escolha.data, escolha.repeticao);
-  const mostradas = datas.slice(0, 4).map(data => formatarData(data)).join(", ");
-  const regra = escolha.repeticao.frequencia === "mensal" ? `${descreverMensal(escolha.data)}: ` : "";
-  alvo.textContent = regra + (escolha.repeticao.vezes == null
-    ? `${mostradas} e assim por diante.`
-    : `${mostradas}${datas.length > 4 ? ` … até ${formatarData(datas.at(-1))}` : ""}.`);
-}
-
 /* Resumo e confirmação */
 
 function proximaPendencia() {
@@ -223,7 +181,6 @@ function proximaPendencia() {
 
 function desenharResumo() {
   const { nomes, duracao, preco } = soma();
-  const repetindo = escolha.repeticao.frequencia !== "nenhuma";
   const profissional = profissionalPorId(escolha.profissionalId);
 
   $("#resumoServicos").textContent = nomes || "—";
@@ -231,9 +188,8 @@ function desenharResumo() {
   $("#resumoQuando").textContent = escolha.data
     ? `${formatarData(escolha.data, { weekday: "short", day: "2-digit", month: "2-digit" })}${escolha.horario ? ` às ${escolha.horario}` : ""}`
     : "—";
-  $("#resumoRepeticao").textContent = descreverRepeticao(escolha.repeticao, escolha.data);
   $("#resumoPreco").textContent = formatarMoeda(preco);
-  $("#resumoDuracao").textContent = duracao ? `${duracao} min${repetindo ? " · por atendimento" : ""}` : "";
+  $("#resumoDuracao").textContent = duracao ? `${duracao} min` : "";
 
   const pendencia = proximaPendencia();
   $("#confirmar").textContent = pendencia ? pendencia.texto : "Confirmar agendamento";
@@ -242,7 +198,6 @@ function desenharResumo() {
 
 function atualizarAgenda() {
   desenharDias();
-  desenharDatasRepeticao();
   desenharResumo();
 }
 
@@ -279,13 +234,13 @@ $("#agendar").addEventListener("submit", evento => {
     profissionalId: escolha.profissionalId,
     data: escolha.data,
     inicio: escolha.horario,
-    repeticao: escolha.repeticao,
     origem: "cliente"
   });
 
   if (!resultado.ok) {
     $("#erroEnvio").textContent = resultado.erro;
     estado = carregar();
+    desenharServicos();
     atualizarAgenda();
     return;
   }
@@ -299,7 +254,7 @@ for (const campo of [campos.nome, campos.telefone]) {
 }
 
 function mostrarConfirmacao(agendamento) {
-  const { nomes, duracao } = somarServicos(agendamento.servicos);
+  const { nomes, duracao } = somarServicos(estado, agendamento.servicos);
   const profissional = profissionalPorId(agendamento.profissionalId).nome;
   const quando = formatarData(agendamento.data, { weekday: "long", day: "numeric", month: "long" });
 
@@ -308,8 +263,7 @@ function mostrarConfirmacao(agendamento) {
   $("#confirmadoDetalhes").replaceChildren(...[
     ["Cliente", `${agendamento.cliente.nome} · ${formatarTelefone(agendamento.cliente.telefone)}`],
     ["Serviços", `${nomes} · ${duracao} min`],
-    ["Valor", formatarMoeda(agendamento.preco)],
-    ["Repetição", descreverRepeticao(agendamento.repeticao, agendamento.data)]
+    ["Valor", formatarMoeda(agendamento.preco)]
   ].map(([rotulo, valor]) => el("div", {}, el("dt", {}, rotulo), el("dd", {}, valor))));
 
   if (config.whatsapp) {
@@ -332,6 +286,7 @@ $("#novoAgendamento").addEventListener("click", () => {
   $("#confirmado").hidden = true;
   $("#areaAgendamento").hidden = false;
   document.body.classList.remove("concluido");
+  desenharServicos();
   atualizarAgenda();
   $("#etapaServicos").scrollIntoView({ block: "start" });
 });
@@ -348,5 +303,7 @@ atualizarAgenda();
 // Outra aba (o painel, por exemplo) mudou a agenda: atualiza os horários livres.
 aoMudar(novo => {
   estado = novo;
-  if (!$("#areaAgendamento").hidden) atualizarAgenda();
+  if ($("#areaAgendamento").hidden) return;
+  desenharServicos();
+  atualizarAgenda();
 });

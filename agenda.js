@@ -36,11 +36,13 @@ export function formatarData(chave, opcoes = { day: "2-digit", month: "2-digit" 
 const moeda = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 export const formatarMoeda = valor => moeda.format(valor);
 
-export const servicoPorId = id => config.servicos.find(servico => servico.id === id);
+// Serviço removido some das opções, mas continua existindo para os atendimentos antigos.
+export const servicosAtivos = estado => estado.servicos.filter(servico => !servico.removido);
+export const servicoPorId = (estado, id) => estado.servicos.find(servico => servico.id === id);
 export const profissionalPorId = id => config.profissionais.find(pessoa => pessoa.id === id);
 
-export function somarServicos(ids) {
-  const lista = ids.map(servicoPorId).filter(Boolean);
+export function somarServicos(estado, ids) {
+  const lista = ids.map(id => servicoPorId(estado, id)).filter(Boolean);
   return {
     lista,
     nomes: lista.map(servico => servico.nome).join(" + "),
@@ -106,6 +108,33 @@ export function datasDaSerie(primeira, { frequencia, vezes }) {
   }
   return datas;
 }
+
+// Primeira data da regra, a partir de "primeira", que cai em "alvo" ou depois.
+function primeiraOcorrenciaDesde(primeira, frequencia, alvo) {
+  if (frequencia === "mensal") {
+    const base = daChave(primeira);
+    const regra = regraMensal(primeira);
+    for (let indice = 0; ; indice++) {
+      const data = dataMensal(base.getFullYear(), base.getMonth() + indice, regra);
+      if (data >= alvo) return data;
+    }
+  }
+  const passos = Math.ceil(Math.max(0, diasEntre(primeira, alvo)) / INTERVALO[frequencia]);
+  return somarDias(primeira, passos * INTERVALO[frequencia]);
+}
+
+// Onde começa a série quando um atendimento avulso vira recorrente: nele mesmo, se é de hoje
+// ou futuro; se já passou, na próxima data da regra (o que passou não é recriado).
+export function inicioDaRecorrencia(agendamento, frequencia) {
+  if (agendamento.data >= hoje()) return agendamento.data;
+  const data = primeiraOcorrenciaDesde(agendamento.data, frequencia, hoje());
+  const agora = new Date();
+  const jaPassou = data === hoje() && minutos(agendamento.inicio) <= agora.getHours() * 60 + agora.getMinutes();
+  return jaPassou ? primeiraOcorrenciaDesde(agendamento.data, frequencia, somarDias(hoje(), 1)) : data;
+}
+
+// Segunda-feira da semana da data: o painel mostra a semana de segunda a domingo.
+export const inicioDaSemana = chave => somarDias(chave, -((daChave(chave).getDay() + 6) % 7));
 
 export function ocorreEm(agendamento, data) {
   if (data < agendamento.data || (agendamento.ate && data >= agendamento.ate) ||

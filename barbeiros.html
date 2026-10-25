@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="/tema.css">
   <link rel="stylesheet" href="/base.css">
   <link rel="stylesheet" href="/barbeiros.css">
+  <link rel="stylesheet" href="/relatorios.css">
   <script type="module" src="/barbeiros.js"></script>
 </head>
 <body data-pagina="Painel">
@@ -31,52 +32,327 @@
 
   <nav class="abas" aria-label="Seções do painel">
     <a class="aba" href="#agenda" data-aba="agenda"><span data-icone="calendario"></span><span>Agenda</span></a>
-    <a class="aba" href="#novo" data-aba="novo"><span data-icone="mais"></span><span>Novo</span></a>
     <a class="aba" href="#horarios" data-aba="horarios"><span data-icone="relogio"></span><span>Horários</span></a>
+    <a class="aba" href="#servicos" data-aba="servicos"><span data-icone="tesoura"></span><span>Serviços</span></a>
     <a class="aba" href="#produtos" data-aba="produtos"><span data-icone="sacola"></span><span>Produtos</span></a>
+    <a class="aba" href="#relatorios" data-aba="relatorios"><span data-icone="grafico"></span><span>Relatórios</span></a>
   </nav>
 
   <main class="painel">
     <!-- Agenda -->
-    <section class="secao" data-secao="agenda" aria-labelledby="t-agenda">
-      <header class="secao__topo">
-        <h1 id="t-agenda">Agenda</h1>
-        <div id="filtroAgenda" class="chips chips--rolagem" role="group" aria-label="Mostrar agenda de"></div>
-      </header>
-
+    <section class="secao secao--agenda" data-secao="agenda" aria-labelledby="t-agenda">
       <div class="agenda">
-        <div class="calendario cartao">
-          <div class="calendario__topo">
-            <button id="mesAnterior" class="botao-icone" type="button" aria-label="Mês anterior"><span data-icone="voltar"></span></button>
-            <h2 id="mesTitulo" class="calendario__mes" aria-live="polite"></h2>
-            <button id="mesSeguinte" class="botao-icone" type="button" aria-label="Próximo mês"><span data-icone="seta"></span></button>
+        <div class="agenda__lateral">
+          <header class="secao__topo agenda__titulo">
+            <h1 id="t-agenda">Agenda</h1>
+          </header>
+
+          <aside id="miniCalendario" class="mini-calendario cartao" aria-label="Escolher semana">
+            <div class="mini-calendario__topo">
+              <button id="mesTitulo" class="mini-calendario__mes" type="button" aria-expanded="false" aria-controls="semanasDoMes">
+                <span id="mesNome" aria-live="polite"></span>
+                <span data-icone="seta" class="icone mini-calendario__seta"></span>
+              </button>
+              <button id="irHoje" class="botao botao--contorno botao--pequeno" type="button">Hoje</button>
+              <span class="mini-calendario__navegacao">
+                <button id="mesAnterior" class="botao-icone" type="button" aria-label="Mês anterior"><span data-icone="voltar"></span></button>
+                <button id="mesSeguinte" class="botao-icone" type="button" aria-label="Próximo mês"><span data-icone="seta"></span></button>
+              </span>
+            </div>
+            <div class="mini-calendario__cabeca" aria-hidden="true">
+              <span>S</span><span>T</span><span>Q</span><span>Q</span><span>S</span><span>S</span><span>D</span>
+            </div>
+            <div id="semanasDoMes" class="mini-calendario__semanas"></div>
+          </aside>
+
+          <div class="agenda__controles">
+            <div id="filtroAgenda" class="chips agenda__filtro" role="group" aria-label="Mostrar agenda de"></div>
+            <button id="novoAtendimento" class="botao botao--destaque agenda__novo" type="button" aria-label="Novo atendimento">
+              <span data-icone="mais"></span><span class="agenda__novo-texto">Novo atendimento</span>
+            </button>
+            <p id="semanaResumo" class="quadro-semana__resumo numeros"></p>
+            <p id="legendaAgenda" class="legenda"></p>
           </div>
-          <div class="calendario__semana" aria-hidden="true">
-            <span>D</span><span>S</span><span>T</span><span>Q</span><span>Q</span><span>S</span><span>S</span>
-          </div>
-          <div id="calendario" class="calendario__dias"></div>
-          <button id="irHoje" class="botao botao--contorno botao--pequeno calendario__hoje" type="button">Voltar para hoje</button>
         </div>
 
-        <div class="dia-agenda">
-          <header class="dia-agenda__topo">
-            <h2 id="diaTitulo"></h2>
-            <p id="diaResumo" class="numeros"></p>
-          </header>
-          <div id="diaAvisos" class="dia-agenda__avisos"></div>
-          <ol id="diaLista" class="atendimentos"></ol>
-        </div>
+        <div id="quadro" class="quadro" role="region" aria-label="Atendimentos da semana"></div>
       </div>
     </section>
 
-    <!-- Novo agendamento -->
-    <section class="secao" data-secao="novo" aria-labelledby="t-novo" hidden>
+    <!-- Horários -->
+    <section class="secao" data-secao="horarios" aria-labelledby="t-horarios" hidden>
       <header class="secao__topo">
-        <h1 id="t-novo">Novo agendamento</h1>
-        <p>Para quem marcou por telefone, WhatsApp ou no balcão.</p>
+        <h1 id="t-horarios">Horários</h1>
+        <p>Cada profissional define os próprios dias e horários de trabalho.</p>
       </header>
 
-      <form id="formNovo" class="cartao formulario" novalidate>
+      <details class="cartao cartao--recolhivel">
+        <summary class="cartao__cabeca">
+          <h2 class="cartao__titulo">Expediente</h2>
+          <span data-icone="seta" class="icone cartao__seta"></span>
+        </summary>
+        <div class="cartao__corpo">
+          <div id="profExpediente" class="chips" role="group" aria-label="Profissional"></div>
+          <form id="formExpediente" novalidate>
+            <div id="semana" class="semana"></div>
+            <p id="expedienteErro" class="campo__erro" role="alert"></p>
+            <div class="impacto" role="alert" hidden></div>
+            <button class="botao botao--enfase botao--largo" type="submit" id="salvarExpediente">Salvar expediente</button>
+          </form>
+        </div>
+      </details>
+
+      <details class="cartao cartao--recolhivel">
+        <summary class="cartao__cabeca">
+          <h2 class="cartao__titulo">Folgas e ausências</h2>
+          <span data-icone="seta" class="icone cartao__seta"></span>
+        </summary>
+        <div class="cartao__corpo">
+          <p class="cartao__texto">Férias, consulta, folga extra. Deixe as horas em branco para o dia inteiro.</p>
+          <form id="formAusencia" class="formulario" novalidate>
+            <label class="campo">
+              <span class="campo__rotulo">Profissional</span>
+              <select name="profissionalId" id="ausenciaProfissional" class="entrada"></select>
+            </label>
+            <div class="formulario__grade formulario__grade--dupla">
+              <label class="campo"><span class="campo__rotulo">De</span><input name="inicio" class="entrada" type="date" required></label>
+              <label class="campo"><span class="campo__rotulo">Até</span><input name="fim" class="entrada" type="date" required></label>
+              <label class="campo"><span class="campo__rotulo">Das <small>(opcional)</small></span><input name="horaInicio" class="entrada" type="time"></label>
+              <label class="campo"><span class="campo__rotulo">Às <small>(opcional)</small></span><input name="horaFim" class="entrada" type="time"></label>
+            </div>
+            <p class="campo__erro" role="alert"></p>
+            <div class="impacto" role="alert" hidden></div>
+            <button class="botao botao--enfase botao--largo" type="submit">Registrar ausência</button>
+          </form>
+          <ul id="listaAusencias" class="registros"></ul>
+        </div>
+      </details>
+
+      <details class="cartao cartao--recolhivel">
+        <summary class="cartao__cabeca">
+          <h2 class="cartao__titulo">Feriados e bloqueios</h2>
+          <span data-icone="seta" class="icone cartao__seta"></span>
+        </summary>
+        <div class="cartao__corpo">
+          <p class="cartao__texto">Valem para a barbearia toda. Deixe as horas em branco para fechar o dia.</p>
+          <form id="formBloqueio" class="formulario" novalidate>
+            <div class="formulario__grade formulario__grade--dupla">
+              <label class="campo"><span class="campo__rotulo">Dia</span><input name="data" class="entrada" type="date" required></label>
+              <label class="campo"><span class="campo__rotulo">Motivo</span><input name="motivo" class="entrada" maxlength="60" placeholder="Feriado" required></label>
+              <label class="campo"><span class="campo__rotulo">Das <small>(opcional)</small></span><input name="horaInicio" class="entrada" type="time"></label>
+              <label class="campo"><span class="campo__rotulo">Às <small>(opcional)</small></span><input name="horaFim" class="entrada" type="time"></label>
+            </div>
+            <p class="campo__erro" role="alert"></p>
+            <div class="impacto" role="alert" hidden></div>
+            <button class="botao botao--enfase botao--largo" type="submit">Adicionar bloqueio</button>
+          </form>
+          <ul id="listaBloqueios" class="registros"></ul>
+        </div>
+      </details>
+
+      <p class="nota">Se uma mudança atingir alguém que já tem horário marcado, o painel avisa antes de salvar.</p>
+    </section>
+
+    <!-- Serviços -->
+    <section class="secao" data-secao="servicos" aria-labelledby="t-servicos" hidden>
+      <header class="secao__topo">
+        <h1 id="t-servicos">Serviços</h1>
+        <p>O que você cadastrar aqui aparece para o cliente na hora de marcar.</p>
+      </header>
+
+      <form id="formServico" class="cartao formulario" novalidate>
+        <div class="formulario__topo">
+          <h2 id="servicoTitulo" class="cartao__titulo">Novo serviço</h2>
+          <button id="cancelarEdicaoServico" class="botao botao--contorno botao--pequeno" type="button" hidden>Cancelar</button>
+        </div>
+        <div class="formulario__grade formulario__grade--servico">
+          <label class="campo">
+            <span class="campo__rotulo">Serviço</span>
+            <input name="nome" class="entrada" maxlength="60" required>
+          </label>
+          <label class="campo">
+            <span class="campo__rotulo">Preço (R$)</span>
+            <input name="preco" class="entrada numeros" inputmode="decimal" placeholder="0,00" required>
+          </label>
+          <label class="campo">
+            <span class="campo__rotulo">Duração</span>
+            <select name="duracao" id="servicoDuracao" class="entrada numeros"></select>
+          </label>
+        </div>
+        <fieldset class="campo">
+          <legend class="campo__rotulo">Símbolo na agenda</legend>
+          <div id="servicoIcones" class="chips" role="radiogroup" aria-label="Símbolo na agenda"></div>
+        </fieldset>
+        <p class="campo__erro" role="alert"></p>
+        <button id="salvarServico" class="botao botao--enfase botao--largo" type="submit">Adicionar serviço</button>
+      </form>
+
+      <ul id="listaServicos" class="registros registros--cartoes"></ul>
+      <p class="nota">Mudar o preço ou a duração vale para os próximos agendamentos. Quem já marcou continua com o valor e o tempo combinados.</p>
+    </section>
+
+    <!-- Produtos -->
+    <section class="secao" data-secao="produtos" aria-labelledby="t-produtos" hidden>
+      <header class="secao__topo">
+        <h1 id="t-produtos">Produtos</h1>
+        <p>O que você cadastrar aqui aparece na loja.</p>
+      </header>
+
+      <form id="formProduto" class="cartao formulario" novalidate>
+        <div class="formulario__topo">
+          <h2 id="produtoTitulo" class="cartao__titulo">Novo produto</h2>
+          <button id="cancelarEdicao" class="botao botao--contorno botao--pequeno" type="button" hidden>Cancelar</button>
+        </div>
+        <div class="formulario__grade formulario__grade--produto">
+          <label class="campo">
+            <span class="campo__rotulo">Produto</span>
+            <input name="nome" class="entrada" maxlength="80" required>
+          </label>
+          <label class="campo">
+            <span class="campo__rotulo">Preço (R$)</span>
+            <input name="preco" class="entrada numeros" inputmode="decimal" placeholder="0,00" required>
+          </label>
+        </div>
+        <label class="campo">
+          <span class="campo__rotulo">Descrição <small>(opcional)</small></span>
+          <textarea name="descricao" class="entrada" maxlength="200" rows="2"></textarea>
+        </label>
+        <div class="foto-linha">
+          <label class="foto-campo">
+            <input name="foto" id="produtoFoto" type="file" accept="image/jpeg,image/png,image/webp">
+            <img id="produtoPrevia" class="foto-campo__previa" alt="" hidden>
+            <span class="foto-campo__texto"><strong id="produtoFotoTexto">Adicionar foto</strong><small>JPG, PNG ou WebP</small></span>
+          </label>
+          <button id="removerFoto" class="botao botao--perigo botao--pequeno" type="button" hidden>Tirar foto</button>
+        </div>
+        <p class="campo__erro" role="alert"></p>
+        <button id="salvarProduto" class="botao botao--enfase botao--largo" type="submit">Adicionar à loja</button>
+      </form>
+
+      <ul id="listaProdutos" class="registros registros--cartoes registros--produtos"></ul>
+    </section>
+
+    <!-- Relatórios -->
+    <section class="secao secao--relatorios" data-secao="relatorios" aria-labelledby="t-relatorios" hidden>
+      <header class="secao__topo relatorio__topo">
+        <h1 id="t-relatorios">Relatórios</h1>
+        <div class="relatorio__exportar">
+          <button id="baixarPdf" class="botao botao--contorno botao--pequeno" type="button"
+                  title="Abre a impressão: escolha “Salvar como PDF”"><span data-icone="baixar"></span>PDF</button>
+          <button id="baixarCsv" class="botao botao--contorno botao--pequeno" type="button"
+                  title="Planilha com os atendimentos filtrados (abre no Excel ou no Google Planilhas)"><span data-icone="baixar"></span>CSV</button>
+        </div>
+      </header>
+
+      <!-- Só aparece no PDF: de quem é o relatório e com quais filtros. -->
+      <div class="relatorio__impressao">
+        <p class="relatorio__marca" data-marca="nome">Santiago Barbearia</p>
+        <p id="relImpressao" class="relatorio__impressao-filtros"></p>
+      </div>
+
+      <form id="filtrosRelatorio" class="relatorio__filtros" aria-label="Filtros do relatório" novalidate>
+        <label class="campo">
+          <span class="campo__rotulo">Período</span>
+          <select name="periodo" class="entrada">
+            <option value="esta-semana">Esta semana</option>
+            <option value="este-mes" selected>Este mês</option>
+            <option value="mes-passado">Mês passado</option>
+            <option value="ultimos-30">Últimos 30 dias</option>
+            <option value="proximos-30">Próximos 30 dias</option>
+            <option value="este-ano">Este ano</option>
+            <option value="personalizado">Escolher datas</option>
+          </select>
+        </label>
+        <label class="campo relatorio__data" hidden>
+          <span class="campo__rotulo">De</span>
+          <input name="de" class="entrada" type="date">
+        </label>
+        <label class="campo relatorio__data" hidden>
+          <span class="campo__rotulo">Até</span>
+          <input name="ate" class="entrada" type="date">
+        </label>
+        <label class="campo">
+          <span class="campo__rotulo">Profissional</span>
+          <select name="profissional" class="entrada"></select>
+        </label>
+        <label class="campo">
+          <span class="campo__rotulo">Serviço</span>
+          <select name="servico" class="entrada"></select>
+        </label>
+        <label class="campo">
+          <span class="campo__rotulo">Origem</span>
+          <select name="origem" class="entrada">
+            <option value="">Todas</option>
+            <option value="cliente">Pelo site</option>
+            <option value="painel">Pelo painel</option>
+          </select>
+        </label>
+        <label class="campo">
+          <span class="campo__rotulo">Tipo</span>
+          <select name="tipo" class="entrada">
+            <option value="">Todos</option>
+            <option value="recorrente">Recorrentes</option>
+            <option value="avulso">Avulsos</option>
+          </select>
+        </label>
+      </form>
+      <p id="relErro" class="campo__erro" role="alert"></p>
+
+      <p id="relPeriodo" class="relatorio__periodo"></p>
+      <div id="relIndicadores" class="indicadores"></div>
+
+      <div class="cartao relatorio__painel">
+        <div class="relatorio__controles">
+          <label class="campo">
+            <span class="campo__rotulo">Mostrar</span>
+            <select id="relMedida" class="entrada"></select>
+          </label>
+          <label class="campo">
+            <span class="campo__rotulo">Agrupar por</span>
+            <select id="relGrupo" class="entrada"></select>
+          </label>
+          <fieldset class="campo relatorio__tipos">
+            <legend class="campo__rotulo">Gráfico</legend>
+            <div id="relTipos" class="chips" role="radiogroup" aria-label="Tipo de gráfico"></div>
+          </fieldset>
+        </div>
+        <h2 id="relTitulo" class="relatorio__titulo"></h2>
+        <div id="relGrafico" class="grafico"></div>
+      </div>
+
+      <div class="cartao relatorio__painel">
+        <h2 id="relTituloTabela" class="relatorio__titulo"></h2>
+        <div class="tabela-rolagem">
+          <table id="relTabela" class="tabela"></table>
+        </div>
+      </div>
+
+      <p class="nota relatorio__nota">
+        Atendimento com mais de um serviço conta em cada um deles, com o valor e o tempo divididos entre os serviços.
+        No PDF, a impressão abre: escolha “Salvar como PDF”.
+      </p>
+    </section>
+
+    <footer class="painel__rodape">
+      <p>Por enquanto, os dados ficam salvos só neste navegador. Quando o banco de dados entrar no ar, eles passam a valer em qualquer aparelho.</p>
+      <div class="painel__testes">
+        <button id="gerarExemplo" class="botao botao--contorno botao--pequeno" type="button">Gerar dados de exemplo</button>
+        <button id="apagarTudo" class="botao botao--perigo botao--pequeno" type="button">Apagar dados de teste</button>
+      </div>
+    </footer>
+  </main>
+
+  <dialog id="janelaNovo" class="folha" aria-labelledby="novoTitulo">
+    <div class="folha__conteudo">
+      <div class="folha__alca" aria-hidden="true"></div>
+      <header class="janela__topo">
+        <div>
+          <h2 id="novoTitulo" class="janela__titulo">Novo atendimento</h2>
+          <p id="novoQuando" class="janela__subtitulo numeros"></p>
+        </div>
+        <button class="botao-icone" type="button" data-fechar aria-label="Fechar"><span data-icone="fechar"></span></button>
+      </header>
+      <form id="formNovo" class="formulario" novalidate>
         <div class="formulario__grade">
           <label class="campo">
             <span class="campo__rotulo">Nome do cliente</span>
@@ -129,113 +405,8 @@
         <p id="novoErro" class="campo__erro" role="alert"></p>
         <button class="botao botao--destaque botao--largo" type="submit">Marcar horário</button>
       </form>
-    </section>
-
-    <!-- Horários -->
-    <section class="secao" data-secao="horarios" aria-labelledby="t-horarios" hidden>
-      <header class="secao__topo">
-        <h1 id="t-horarios">Horários</h1>
-        <p>Cada profissional define os próprios dias e horários de trabalho.</p>
-      </header>
-
-      <div class="cartao">
-        <h2 class="cartao__titulo">Expediente</h2>
-        <div id="profExpediente" class="chips" role="group" aria-label="Profissional"></div>
-        <form id="formExpediente" novalidate>
-          <div id="semana" class="semana"></div>
-          <p id="expedienteErro" class="campo__erro" role="alert"></p>
-          <div class="impacto" role="alert" hidden></div>
-          <button class="botao botao--enfase botao--largo" type="submit" id="salvarExpediente">Salvar expediente</button>
-        </form>
-      </div>
-
-      <div class="cartao">
-        <h2 class="cartao__titulo">Folgas e ausências</h2>
-        <p class="cartao__texto">Férias, consulta, folga extra. Deixe as horas em branco para o dia inteiro.</p>
-        <form id="formAusencia" class="formulario" novalidate>
-          <label class="campo">
-            <span class="campo__rotulo">Profissional</span>
-            <select name="profissionalId" id="ausenciaProfissional" class="entrada"></select>
-          </label>
-          <div class="formulario__grade formulario__grade--dupla">
-            <label class="campo"><span class="campo__rotulo">De</span><input name="inicio" class="entrada" type="date" required></label>
-            <label class="campo"><span class="campo__rotulo">Até</span><input name="fim" class="entrada" type="date" required></label>
-            <label class="campo"><span class="campo__rotulo">Das <small>(opcional)</small></span><input name="horaInicio" class="entrada" type="time"></label>
-            <label class="campo"><span class="campo__rotulo">Às <small>(opcional)</small></span><input name="horaFim" class="entrada" type="time"></label>
-          </div>
-          <p class="campo__erro" role="alert"></p>
-          <div class="impacto" role="alert" hidden></div>
-          <button class="botao botao--enfase botao--largo" type="submit">Registrar ausência</button>
-        </form>
-        <ul id="listaAusencias" class="registros"></ul>
-      </div>
-
-      <div class="cartao">
-        <h2 class="cartao__titulo">Feriados e bloqueios</h2>
-        <p class="cartao__texto">Valem para a barbearia toda. Deixe as horas em branco para fechar o dia.</p>
-        <form id="formBloqueio" class="formulario" novalidate>
-          <div class="formulario__grade formulario__grade--dupla">
-            <label class="campo"><span class="campo__rotulo">Dia</span><input name="data" class="entrada" type="date" required></label>
-            <label class="campo"><span class="campo__rotulo">Motivo</span><input name="motivo" class="entrada" maxlength="60" placeholder="Feriado" required></label>
-            <label class="campo"><span class="campo__rotulo">Das <small>(opcional)</small></span><input name="horaInicio" class="entrada" type="time"></label>
-            <label class="campo"><span class="campo__rotulo">Às <small>(opcional)</small></span><input name="horaFim" class="entrada" type="time"></label>
-          </div>
-          <p class="campo__erro" role="alert"></p>
-          <div class="impacto" role="alert" hidden></div>
-          <button class="botao botao--enfase botao--largo" type="submit">Adicionar bloqueio</button>
-        </form>
-        <ul id="listaBloqueios" class="registros"></ul>
-      </div>
-
-      <p class="nota">Se uma mudança atingir alguém que já tem horário marcado, o painel avisa antes de salvar.</p>
-    </section>
-
-    <!-- Produtos -->
-    <section class="secao" data-secao="produtos" aria-labelledby="t-produtos" hidden>
-      <header class="secao__topo">
-        <h1 id="t-produtos">Produtos</h1>
-        <p>O que você cadastrar aqui aparece na loja.</p>
-      </header>
-
-      <form id="formProduto" class="cartao formulario" novalidate>
-        <div class="formulario__topo">
-          <h2 id="produtoTitulo" class="cartao__titulo">Novo produto</h2>
-          <button id="cancelarEdicao" class="botao botao--contorno botao--pequeno" type="button" hidden>Cancelar edição</button>
-        </div>
-        <div class="formulario__grade formulario__grade--produto">
-          <label class="campo">
-            <span class="campo__rotulo">Produto</span>
-            <input name="nome" class="entrada" maxlength="80" required>
-          </label>
-          <label class="campo">
-            <span class="campo__rotulo">Preço (R$)</span>
-            <input name="preco" class="entrada numeros" inputmode="decimal" placeholder="0,00" required>
-          </label>
-        </div>
-        <label class="campo">
-          <span class="campo__rotulo">Descrição <small>(opcional)</small></span>
-          <textarea name="descricao" class="entrada" maxlength="200" rows="2"></textarea>
-        </label>
-        <div class="foto-linha">
-          <label class="foto-campo">
-            <input name="foto" id="produtoFoto" type="file" accept="image/jpeg,image/png,image/webp">
-            <img id="produtoPrevia" class="foto-campo__previa" alt="" hidden>
-            <span class="foto-campo__texto"><strong id="produtoFotoTexto">Adicionar foto</strong><small>JPG, PNG ou WebP</small></span>
-          </label>
-          <button id="removerFoto" class="botao botao--perigo botao--pequeno" type="button" hidden>Tirar foto</button>
-        </div>
-        <p class="campo__erro" role="alert"></p>
-        <button id="salvarProduto" class="botao botao--enfase botao--largo" type="submit">Adicionar à loja</button>
-      </form>
-
-      <ul id="listaProdutos" class="registros registros--produtos"></ul>
-    </section>
-
-    <footer class="painel__rodape">
-      <p>Por enquanto, os dados ficam salvos só neste navegador. Quando o banco de dados entrar no ar, eles passam a valer em qualquer aparelho.</p>
-      <button id="apagarTudo" class="botao botao--perigo botao--pequeno" type="button">Apagar dados de teste</button>
-    </footer>
-  </main>
+    </div>
+  </dialog>
 
   <dialog id="detalhe" class="folha" aria-labelledby="detalheTitulo">
     <div class="folha__conteudo">

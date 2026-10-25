@@ -30,7 +30,16 @@ const caminhos = {
   tesoura: '<circle cx="6" cy="6.5" r="2.5"/><circle cx="6" cy="17.5" r="2.5"/><path d="M8.2 8l11.3 9.5M8.2 16L19.5 6.5"/>',
   alerta: '<path d="M10.3 4.3a2 2 0 013.4 0l7.4 12.8a2 2 0 01-1.7 3H4.6a2 2 0 01-1.7-3z"/><path d="M12 9.5v4M12 16.8v.01"/>',
   instagram: '<rect x="3.5" y="3.5" width="17" height="17" rx="5"/><circle cx="12" cy="12" r="4"/><path d="M17.2 6.8v.01"/>',
-  local: '<path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0113 0c0 5.4-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/>'
+  local: '<path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0113 0c0 5.4-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/>',
+  grafico: '<path d="M4 20h16"/><path d="M7 16v-4M12 16V6M17 16v-7"/>',
+  baixar: '<path d="M12 4v11"/><path d="M7.5 10.5L12 15l4.5-4.5"/><path d="M5 19.5h14"/>',
+  // Símbolos dos serviços (aparecem nos atendimentos da agenda)
+  barba: '<path d="M5 4.5V9c0 6 3.2 10.5 7 10.5S19 15 19 9V4.5"/><path d="M8.5 12.2c1.4-1.1 2.6-1.1 3.5-.2.9-.9 2.1-.9 3.5.2"/><path d="M10.5 16h3"/>',
+  sobrancelha: '<path d="M4 9.5c3.5-3.4 10-3.8 16-1"/><path d="M5 15.5c3.8-3.6 10.2-3.6 14 0-3.8 3.6-10.2 3.6-14 0z"/><circle cx="12" cy="15.5" r="1.4"/>',
+  navalha: '<path d="M3.5 15.5L14 5l3 3L6.5 18.5z"/><path d="M15.5 9.5l5 5-2 2-5-5"/>',
+  pente: '<rect x="3.5" y="7" width="17" height="4" rx="1"/><path d="M6 11v6M9 11v6M12 11v6M15 11v6M18 11v6"/>',
+  gota: '<path d="M12 3.5s6 6.4 6 10.5a6 6 0 01-12 0c0-4.1 6-10.5 6-10.5z"/>',
+  estrela: '<path d="M12 4l2.4 5 5.4.6-4 3.7 1.1 5.4L12 16l-4.9 2.7 1.1-5.4-4-3.7 5.4-.6z"/>'
 };
 
 export function icone(nome, classe = "icone") {
@@ -61,6 +70,10 @@ export function preencherMarca() {
     if (tipo === "whatsapp" && config.whatsapp) {
       link.href = linkWhatsApp(config.whatsapp, "Olá! Vim pelo site.");
       link.querySelector("[data-texto]").textContent = formatarTelefone(config.whatsapp.replace(/^55/, ""));
+    } else if (tipo === "mapa" && config.endereco) {
+      link.href = linkMapa();
+      link.querySelector("[data-texto]").textContent = config.endereco;
+      link.setAttribute("aria-label", `${config.endereco}. Abrir no Google Maps`);
     } else if (tipo === "instagram" && config.instagram) {
       link.href = `https://instagram.com/${config.instagram}`;
       link.querySelector("[data-texto]").textContent = `@${config.instagram}`;
@@ -96,6 +109,12 @@ export function linkWhatsApp(numero, texto = "") {
   let digitos = soDigitos(numero);
   if (digitos.length === 10 || digitos.length === 11) digitos = `55${digitos}`;
   return `https://wa.me/${digitos}${texto ? `?text=${encodeURIComponent(texto)}` : ""}`;
+}
+
+export function linkMapa() {
+  if (config.mapa) return config.mapa;
+  const endereco = config.endereco.replace(/\s*·\s*/g, ", ");
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(endereco)}`;
 }
 
 let temporizadorAviso;
