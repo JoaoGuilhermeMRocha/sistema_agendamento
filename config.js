@@ -28,9 +28,11 @@ export const config = {
     { id: "sobrancelha", nome: "Sobrancelha", preco: 20, duracao: 15, icone: "sobrancelha" }
   ],
 
+  // foto: retrato quadrado em imagens/ (vazio mostra a inicial). descricao: uma linha curta, opcional.
+  // Fotos e descrições abaixo são provisórias, até chegarem as do Santiago.
   profissionais: [
-    { id: "santiago", nome: "Santiago" },
-    { id: "damigo", nome: "Damigo" }
+    { id: "santiago", nome: "Santiago", foto: "/imagens/santiago.svg", descricao: "Fundador da casa" },
+    { id: "damigo", nome: "Damigo", foto: "/imagens/damigo.svg", descricao: "Barbeiro" }
   ],
 
   // Expediente inicial de cada profissional (0 = domingo, null = folga).

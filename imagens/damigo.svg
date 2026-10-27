@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <!-- Retrato provisório: trocar pela foto do barbeiro (damigo.jpg) e ajustar o config.js. -->
+  <defs>
+    <radialGradient id="fundo" cx=".5" cy=".35" r=".75">
+      <stop offset="0" stop-color="#3a332b"/>
+      <stop offset="1" stop-color="#15120f"/>
+    </radialGradient>
+  </defs>
+  <rect width="200" height="200" fill="url(#fundo)"/>
+  <path d="M18 200c4-42 40-62 82-62s78 20 82 62z" fill="#27231f"/>
+  <path d="M80 142c6 10 34 10 40 0" fill="none" stroke="#efe6d6" stroke-width="3" stroke-linecap="round" opacity=".5"/>
+  <rect x="84" y="110" width="32" height="36" rx="10" fill="#6e5641"/>
+  <ellipse cx="66" cy="94" rx="6" ry="10" fill="#6e5641"/>
+  <ellipse cx="134" cy="94" rx="6" ry="10" fill="#6e5641"/>
+  <ellipse cx="100" cy="90" rx="34" ry="40" fill="#7d634b"/>
+  <path d="M66 84c-2-26 14-40 34-40s36 14 34 40c-6-16-18-24-34-24s-28 8-34 24z" fill="#1a1511"/>
+  <path d="M84 110c8-5 24-5 32 0-4 3-28 3-32 0z" fill="#1a1511"/>
+  <path d="M88 118c2 12 22 12 24 0-4 6-20 6-24 0z" fill="#1a1511"/>
+  <path d="M70 100c2 16 8 26 14 30-6-10-8-18-8-28z M130 100c-2 16-8 26-14 30 6-10 8-18 8-28z" fill="#1a1511" opacity=".85"/>
+</svg>

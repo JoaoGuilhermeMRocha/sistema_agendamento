@@ -23,8 +23,11 @@ const ORDEM_DA_SEMANA = [1, 2, 3, 4, 5, 6, 0];
 let estado = carregar();
 const visao = {
   filtro: null,
-  semana: inicioDaSemana(hoje()),
-  // Mês mostrado no mini calendário (pode ser outro que o da semana escolhida).
+  // Dia escolhido: no celular a agenda mostra só ele; no computador, a semana dele.
+  dia: hoje(),
+  // Para que lado o quadro desliza ao trocar de dia ou de semana (-1, 0 ou 1).
+  direcao: 0,
+  // Mês mostrado no mini calendário (pode ser outro que o do dia escolhido).
   ano: new Date().getFullYear(),
   mes: new Date().getMonth(),
   profissionalExpediente: config.profissionais[0].id
@@ -63,9 +66,11 @@ function abrirAba(nome) {
 
 window.addEventListener("hashchange", () => abrirAba(location.hash.slice(1)));
 
-/* Agenda: semana em colunas, com mini calendário do mês */
+/* Agenda: no computador, a semana em colunas; no celular, um dia, com uma coluna por profissional */
 
 const DIAS_CURTOS = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
+const CELULAR = matchMedia("(max-width: 899px)");
+const visaoDiaria = () => CELULAR.matches;
 const ROTULOS_INDISPONIVEL = {
   "Dia de folga do profissional": "Folga",
   "Na pausa do profissional": "Pausa",
@@ -74,95 +79,215 @@ const ROTULOS_INDISPONIVEL = {
 
 const agoraEmMinutos = () => new Date().getHours() * 60 + new Date().getMinutes();
 const idsDoFiltro = () => visao.filtro ? [visao.filtro] : config.profissionais.map(pessoa => pessoa.id);
-const diasDaSemana = () => Array.from({ length: 7 }, (_, indice) => somarDias(visao.semana, indice));
+const semanaEscolhida = () => inicioDaSemana(visao.dia);
+const diasDaSemana = () => Array.from({ length: 7 }, (_, indice) => somarDias(semanaEscolhida(), indice));
 const doFiltro = agendamento => !visao.filtro || agendamento.profissionalId === visao.filtro;
 const doDia = data => atendimentosDoDia(estado, data).filter(doFiltro);
+const daColuna = coluna => atendimentosDoDia(estado, coluna.data).filter(item => coluna.ids.includes(item.profissionalId));
+const somaDosValores = atendimentos => atendimentos.reduce((soma, item) => soma + item.preco, 0);
+
+// Cada coluna do quadro é um dia e os profissionais que ela mostra.
+const colunasDoQuadro = () => visaoDiaria()
+  ? idsDoFiltro().map(id => ({ data: visao.dia, ids: [id] }))
+  : diasDaSemana().map(data => ({ data, ids: idsDoFiltro() }));
 const iconeDeServico = nome => icone(nome, `icone icone-servico icone-servico--${nome}`);
 const pxPorMinuto = () => parseFloat(getComputedStyle($("#quadro")).getPropertyValue("--px-min")) || 1.6;
 
-function desenharFiltro() {
-  const opcoes = [{ id: null, nome: "Todos" }, ...config.profissionais];
-  $("#filtroAgenda").replaceChildren(...opcoes.map(pessoa => el("button", {
-    type: "button",
-    class: "chip",
-    "aria-pressed": String(visao.filtro === pessoa.id),
-    onclick: () => {
-      visao.filtro = pessoa.id;
-      desenharAgenda();
-    }
-  }, pessoa.id && el("span", { class: "chip__cor", "data-profissional": indiceProfissional(pessoa.id) % 4 }), pessoa.nome)));
+// Filtro de profissional: um seletor deslizante (Todos, um, outro). O cursor anda até a opção escolhida;
+// dá para tocar, arrastar ou usar as setas do teclado.
+const OPCOES_DO_FILTRO = [{ id: null, nome: "Todos" }, ...config.profissionais];
+
+function escolherFiltro(id, focar = false) {
+  if (visao.filtro !== id) {
+    visao.filtro = id;
+    desenharAgenda();
+  }
+  if (focar) $(`#filtroAgenda [aria-checked="true"]`).focus();
 }
 
-function irParaSemana(segunda) {
-  visao.semana = segunda;
-  const meio = daChave(somarDias(segunda, 3));
-  visao.ano = meio.getFullYear();
-  visao.mes = meio.getMonth();
+function montarFiltro() {
+  const filtro = $("#filtroAgenda");
+  filtro.style.setProperty("--opcoes", OPCOES_DO_FILTRO.length);
+  filtro.replaceChildren(
+    el("span", { class: "seletor__cursor", "aria-hidden": "true" }),
+    ...OPCOES_DO_FILTRO.map(pessoa => el("button", {
+      type: "button",
+      class: "seletor__opcao",
+      role: "radio",
+      onclick: () => escolherFiltro(pessoa.id)
+    },
+    pessoa.id && el("span", { class: "chip__cor", "data-profissional": indiceProfissional(pessoa.id) % 4 }),
+    el("span", { class: "seletor__nome" }, pessoa.nome))));
+
+  const opcaoNoPonto = evento => {
+    const caixa = filtro.getBoundingClientRect();
+    const indice = Math.floor((evento.clientX - caixa.left) / caixa.width * OPCOES_DO_FILTRO.length);
+    return OPCOES_DO_FILTRO[Math.min(OPCOES_DO_FILTRO.length - 1, Math.max(0, indice))].id;
+  };
+  let arrastando = false;
+  // Com o ponteiro capturado, o clique não chega ao botão: a escolha já acontece no toque.
+  filtro.addEventListener("pointerdown", evento => {
+    arrastando = true;
+    filtro.setPointerCapture(evento.pointerId);
+    escolherFiltro(opcaoNoPonto(evento));
+  });
+  filtro.addEventListener("pointermove", evento => {
+    if (arrastando) escolherFiltro(opcaoNoPonto(evento));
+  });
+  filtro.addEventListener("pointerup", () => { arrastando = false; });
+  filtro.addEventListener("pointercancel", () => { arrastando = false; });
+
+  filtro.addEventListener("keydown", evento => {
+    const atual = OPCOES_DO_FILTRO.findIndex(pessoa => pessoa.id === visao.filtro);
+    const ultimo = OPCOES_DO_FILTRO.length - 1;
+    const alvo = { ArrowLeft: atual - 1, ArrowUp: atual - 1, ArrowRight: atual + 1, ArrowDown: atual + 1, Home: 0, End: ultimo }[evento.key];
+    if (alvo === undefined) return;
+    evento.preventDefault();
+    escolherFiltro(OPCOES_DO_FILTRO[Math.min(ultimo, Math.max(0, alvo))].id, true);
+  });
+}
+
+function desenharFiltro() {
+  const escolhida = OPCOES_DO_FILTRO.findIndex(pessoa => pessoa.id === visao.filtro);
+  $("#filtroAgenda").style.setProperty("--escolhida", escolhida);
+  $("#filtroAgenda").querySelectorAll(".seletor__opcao").forEach((opcao, indice) => {
+    opcao.setAttribute("aria-checked", String(indice === escolhida));
+    opcao.tabIndex = indice === escolhida ? 0 : -1;
+  });
+}
+
+function irPara(data) {
+  visao.direcao = Math.sign(data.localeCompare(visao.dia));
+  visao.dia = data;
   abrirMiniCalendario(false);
   desenharAgenda();
 }
 
+// Escolher outra semana mantém o dia da semana (de terça para terça), para o celular não pular de dia.
+const irParaSemana = segunda => irPara(somarDias(segunda, (daChave(visao.dia).getDay() + 6) % 7));
+
+// Calendário e lista da semana abrem por cima do quadro, um de cada vez, sem mudar o tamanho dele.
+const estaAberto = id => !$(`#${id}`).hidden;
+
+function mostrarSuspenso(botao, aberto) {
+  botao.setAttribute("aria-expanded", String(aberto));
+  $(`#${botao.getAttribute("aria-controls")}`).hidden = !aberto;
+}
+
 function abrirMiniCalendario(aberto) {
-  $("#miniCalendario").classList.toggle("mini-calendario--aberto", aberto);
-  $("#mesTitulo").setAttribute("aria-expanded", String(aberto));
-  // Ao fechar sem escolher, volta para o mês da semana escolhida, que é a linha que fica à mostra.
+  if (aberto) mostrarSuspenso($("#semanaResumo"), false);
+  mostrarSuspenso($("#mesTitulo"), aberto);
+  // Ao fechar sem escolher, volta para o mês do dia (ou da semana) escolhido.
   if (!aberto) {
-    const meio = daChave(somarDias(visao.semana, 3));
+    const meio = daChave(visaoDiaria() ? visao.dia : somarDias(semanaEscolhida(), 3));
     visao.ano = meio.getFullYear();
     visao.mes = meio.getMonth();
   }
   desenharMiniCalendario();
-  ajustarEscala();
 }
 
-// No celular, com o mini calendário fechado, não há mês à mostra: as setas andam de semana.
-const setasAndamSemana = () =>
-  matchMedia("(max-width: 899px)").matches && !$("#miniCalendario").classList.contains("mini-calendario--aberto");
+function abrirListaSemana(aberto) {
+  if (aberto) abrirMiniCalendario(false);
+  mostrarSuspenso($("#semanaResumo"), aberto);
+}
 
+document.addEventListener("pointerdown", evento => {
+  if (estaAberto("painelCalendario") && !evento.target.closest("#miniCalendario")) abrirMiniCalendario(false);
+  if (estaAberto("listaSemana") && !evento.target.closest("#resumoSemana")) abrirListaSemana(false);
+});
+document.addEventListener("keydown", evento => {
+  if (evento.key !== "Escape") return;
+  if (estaAberto("painelCalendario")) {
+    abrirMiniCalendario(false);
+    $("#mesTitulo").focus();
+  }
+  if (estaAberto("listaSemana")) {
+    abrirListaSemana(false);
+    $("#semanaResumo").focus();
+  }
+});
+
+// Com o calendário fechado, as setas andam de dia (celular) ou de semana; aberto, andam de mês.
+const setasAndamNaAgenda = () => !estaAberto("painelCalendario");
+const temConflito = data => data >= hoje() && doDia(data).some(item => conflitoDoAtendimento(estado, item, data));
+
+// No computador, cada linha do calendário é uma semana para escolher; no celular, cada dia é um botão.
 function desenharMiniCalendario() {
   const primeiro = new Date(visao.ano, visao.mes, 1);
   const ultimo = paraChave(new Date(visao.ano, visao.mes + 1, 0));
   const mes = new Intl.DateTimeFormat("pt-BR", { month: "short" }).format(primeiro).replace(".", "");
   $("#mesNome").textContent = `${capitalizar(mes)} ${visao.ano}`;
-  const porSemana = setasAndamSemana();
-  $("#mesAnterior").setAttribute("aria-label", porSemana ? "Semana anterior" : "Mês anterior");
-  $("#mesSeguinte").setAttribute("aria-label", porSemana ? "Próxima semana" : "Próximo mês");
+  const naAgenda = setasAndamNaAgenda();
+  const diaria = visaoDiaria();
+  const passo = diaria ? ["Dia anterior", "Próximo dia"] : ["Semana anterior", "Próxima semana"];
+  $("#mesAnterior").setAttribute("aria-label", naAgenda ? passo[0] : "Mês anterior");
+  $("#mesSeguinte").setAttribute("aria-label", naAgenda ? passo[1] : "Próximo mês");
+
+  const diaDoCalendario = data => {
+    const classes = ["mini-calendario__dia"];
+    if (daChave(data).getMonth() !== visao.mes) classes.push("mini-calendario__dia--fora");
+    if (data === hoje()) classes.push("mini-calendario__dia--hoje");
+    if (temConflito(data)) classes.push("mini-calendario__dia--conflito");
+    if (!diaria) return el("span", { class: classes.join(" ") }, daChave(data).getDate());
+    return el("button", {
+      type: "button",
+      class: classes.join(" "),
+      "aria-pressed": String(data === visao.dia),
+      "aria-label": capitalizar(formatarData(data, { weekday: "long", day: "numeric", month: "long" })),
+      onclick: () => irPara(data)
+    }, daChave(data).getDate());
+  };
 
   const semanas = [];
   for (let segunda = inicioDaSemana(paraChave(primeiro)); segunda <= ultimo; segunda = somarDias(segunda, 7)) {
     const domingo = somarDias(segunda, 6);
-    semanas.push(el("button", {
+    const dias = Array.from({ length: 7 }, (_, indice) => diaDoCalendario(somarDias(segunda, indice)));
+    semanas.push(diaria ? el("div", { class: "mini-calendario__semana" }, dias) : el("button", {
       type: "button",
       class: "mini-calendario__semana",
-      "aria-pressed": String(segunda === visao.semana),
+      "aria-pressed": String(segunda === semanaEscolhida()),
       "aria-label": `Semana de ${formatarData(segunda, { day: "numeric", month: "long" })} a ${formatarData(domingo, { day: "numeric", month: "long" })}`,
       onclick: () => irParaSemana(segunda)
-    }, Array.from({ length: 7 }, (_, indice) => {
-      const data = somarDias(segunda, indice);
-      const classes = ["mini-calendario__dia"];
-      if (daChave(data).getMonth() !== visao.mes) classes.push("mini-calendario__dia--fora");
-      if (data === hoje()) classes.push("mini-calendario__dia--hoje");
-      if (data >= hoje() && doDia(data).some(item => conflitoDoAtendimento(estado, item, data))) {
-        classes.push("mini-calendario__dia--conflito");
-      }
-      return el("span", { class: classes.join(" ") }, daChave(data).getDate());
-    })));
+    }, dias));
   }
   $("#semanasDoMes").replaceChildren(...semanas);
 }
 
-// Faixa de horas do quadro: do primeiro início ao último fim da semana, em horas cheias.
-function faixaDaSemana(dias) {
+// Celular: faixa com os sete dias da semana do dia escolhido, com quantos atendimentos cada um tem.
+function desenharDias() {
+  if (!visaoDiaria()) return;
+  $("#diasSemana").replaceChildren(...diasDaSemana().map(data => {
+    const quantos = doDia(data).length;
+    const classes = ["dias__dia"];
+    if (data === hoje()) classes.push("dias__dia--hoje");
+    if (diaFechado(estado, data, visao.filtro) && !quantos) classes.push("dias__dia--fechado");
+    if (temConflito(data)) classes.push("dias__dia--conflito");
+    return el("button", {
+      type: "button",
+      class: classes.join(" "),
+      "aria-pressed": String(data === visao.dia),
+      "aria-label": `${capitalizar(formatarData(data, { weekday: "long", day: "numeric", month: "long" }))}: ` +
+        (quantos ? `${quantos} ${quantos === 1 ? "atendimento" : "atendimentos"}` : "nenhum atendimento"),
+      onclick: () => irPara(data)
+    },
+    el("span", { class: "dias__semana" }, DIAS_CURTOS[daChave(data).getDay()]),
+    el("strong", { class: "dias__numero numeros" }, daChave(data).getDate()),
+    el("span", { class: "dias__quantos numeros" }, quantos || ""));
+  }));
+}
+
+// Faixa de horas do quadro: do primeiro início ao último fim das colunas, em horas cheias.
+function faixaDoQuadro(colunas) {
   let inicio = Infinity;
   let fim = -Infinity;
-  for (const data of dias) {
-    for (const id of idsDoFiltro()) {
-      const expediente = expedienteDoDia(estado, id, data);
+  for (const coluna of colunas) {
+    for (const id of coluna.ids) {
+      const expediente = expedienteDoDia(estado, id, coluna.data);
       if (!expediente) continue;
       inicio = Math.min(inicio, minutos(expediente.inicio));
       fim = Math.max(fim, minutos(expediente.fim));
     }
-    for (const agendamento of doDia(data)) {
+    for (const agendamento of daColuna(coluna)) {
       inicio = Math.min(inicio, minutos(agendamento.inicio));
       fim = Math.max(fim, minutos(agendamento.inicio) + agendamento.duracao);
     }
@@ -171,12 +296,12 @@ function faixaDaSemana(dias) {
   return { inicio: Math.floor(inicio / 60) * 60, fim: Math.ceil(fim / 60) * 60 };
 }
 
-// Trechos em que ninguém do filtro atende: fora do expediente, pausa, folga, ausência ou bloqueio.
-function trechosIndisponiveis(data, faixa) {
+// Trechos em que ninguém da coluna atende: fora do expediente, pausa, folga, ausência ou bloqueio.
+function trechosIndisponiveis(coluna, faixa) {
   const passo = config.agenda.intervaloMinutos;
   const trechos = [];
   for (let inicio = faixa.inicio; inicio < faixa.fim; inicio += passo) {
-    const motivos = idsDoFiltro().map(id => motivoIndisponivel(estado, id, data, inicio, passo));
+    const motivos = coluna.ids.map(id => motivoIndisponivel(estado, id, coluna.data, inicio, passo));
     if (motivos.some(motivo => !motivo)) continue;
     const motivo = motivos.every(item => item === motivos[0]) ? motivos[0] : "";
     const rotulo = motivo.startsWith("Bloqueio: ") ? motivo.slice(10) : ROTULOS_INDISPONIVEL[motivo] ?? "";
@@ -211,8 +336,9 @@ function distribuirEmFaixas(atendimentos) {
   return itens;
 }
 
-function blocoDoAtendimento(item, data, faixa) {
+function blocoDoAtendimento(item, coluna, faixa) {
   const { agendamento } = item;
+  const { data } = coluna;
   const servicos = agendamento.servicos.map(id => servicoPorId(estado, id)).filter(Boolean);
   const repete = agendamento.repeticao.frequencia !== "nenhuma";
   const conflito = data >= hoje() && conflitoDoAtendimento(estado, agendamento, data);
@@ -232,16 +358,18 @@ function blocoDoAtendimento(item, data, faixa) {
     onclick: () => abrirDetalhe(agendamento.id, data)
   },
   el("span", { class: "bloco__linha" },
-    el("strong", { class: "bloco__nome" }, agendamento.cliente.nome.split(" ")[0]),
+    // Na visão do dia a coluna é larga: cabe o nome inteiro.
+    el("strong", { class: "bloco__nome" }, visaoDiaria() ? agendamento.cliente.nome : agendamento.cliente.nome.split(" ")[0]),
     el("span", { class: "bloco__simbolos" },
       conflito && icone("alerta", "icone icone--alerta"),
       repete && icone("repetir"),
       servicos.map(servico => iconeDeServico(servico.icone)))),
   el("span", { class: "bloco__hora numeros" },
-    `${agendamento.inicio}–${fim}`, visao.filtro ? "" : ` · ${nomeProfissional(agendamento.profissionalId)}`));
+    `${agendamento.inicio}–${fim}`, coluna.ids.length > 1 ? ` · ${nomeProfissional(agendamento.profissionalId)}` : ""));
 }
 
-function colunaDoDia(data, faixa, fechada) {
+function colunaDoQuadro(coluna, faixa, fechada) {
+  const { data } = coluna;
   const agora = agoraEmMinutos();
   const classes = ["quadro__coluna"];
   if (data < hoje()) classes.push("quadro__coluna--passado");
@@ -249,66 +377,87 @@ function colunaDoDia(data, faixa, fechada) {
   return el("div", {
     class: classes.join(" "),
     "data-dia": data,
+    // Coluna de um profissional só: o horário livre tocado já abre com ele escolhido.
+    "data-profissional-id": coluna.ids.length === 1 ? coluna.ids[0] : null,
     style: `--minutos: ${faixa.fim - faixa.inicio}`
   },
-  trechosIndisponiveis(data, faixa).map(trecho => el("div", {
+  trechosIndisponiveis(coluna, faixa).map(trecho => el("div", {
     class: "quadro__fechado",
     style: `--inicio: ${trecho.inicio - faixa.inicio}; --duracao: ${trecho.fim - trecho.inicio}`
   }, trecho.rotulo && el("span", {}, trecho.rotulo))),
   data === hoje() && agora > faixa.inicio && agora < faixa.fim &&
     el("div", { class: "quadro__agora", style: `--inicio: ${agora - faixa.inicio}` }),
-  distribuirEmFaixas(doDia(data)).map(item => blocoDoAtendimento(item, data, faixa)));
+  distribuirEmFaixas(daColuna(coluna)).map(item => blocoDoAtendimento(item, coluna, faixa)));
+}
+
+function cabecalhoDoDia(data, atendimentos, fechada) {
+  const classes = ["quadro__dia"];
+  if (data === hoje()) classes.push("quadro__dia--hoje");
+  if (fechada) classes.push("quadro__dia--fechado");
+  return el("div", { class: classes.join(" ") },
+    el("span", { class: "quadro__semana" }, DIAS_CURTOS[daChave(data).getDay()]),
+    el("strong", { class: "quadro__numero numeros" }, daChave(data).getDate()),
+    el("span", { class: "quadro__total numeros" }, atendimentos.length
+      ? [String(atendimentos.length), el("span", { class: "quadro__valor" }, ` · ${formatarMoeda(somaDosValores(atendimentos))}`)] : ""));
+}
+
+function cabecalhoDoProfissional(id, atendimentos, estreita) {
+  return el("div", { class: `quadro__dia quadro__dia--profissional${estreita ? " quadro__dia--fechado" : ""}` },
+    el("span", { class: "quadro__profissional" },
+      el("span", { class: "chip__cor", "data-profissional": indiceProfissional(id) % 4 }), nomeProfissional(id)),
+    el("span", { class: "quadro__total numeros" }, atendimentos.length
+      ? `${atendimentos.length} · ${formatarMoeda(somaDosValores(atendimentos))}` : ""));
 }
 
 function desenharQuadro() {
-  const dias = diasDaSemana();
-  const faixa = faixaDaSemana(dias);
-  const fechadoSemNada = data => diaFechado(estado, data, visao.filtro) && !doDia(data).length;
-  // Dia sem expediente fica só com a largura do nome do dia e da data.
-  const colunas = dias.map(data => fechadoSemNada(data) ? "max-content" : "minmax(0, 1fr)");
+  const colunas = colunasDoQuadro();
+  const faixa = faixaDoQuadro(colunas);
+  const fechadas = colunas.map(coluna =>
+    coluna.ids.every(id => diaFechado(estado, coluna.data, id)) && !daColuna(coluna).length);
+  // Coluna sem expediente fica só com a largura do cabeçalho. Se todas estão fechadas, dividem o espaço.
+  const todasFechadas = fechadas.every(Boolean);
+  const larguras = fechadas.map(fechada => fechada && !todasFechadas ? "max-content" : "minmax(0, 1fr)");
+  const estreita = indice => fechadas[indice] && !todasFechadas;
 
-  const cabecalhos = dias.map(data => {
-    const atendimentos = doDia(data);
-    const total = atendimentos.reduce((soma, item) => soma + item.preco, 0);
-    const classes = ["quadro__dia"];
-    if (data === hoje()) classes.push("quadro__dia--hoje");
-    if (fechadoSemNada(data)) classes.push("quadro__dia--fechado");
-    return el("div", { class: classes.join(" ") },
-      el("span", { class: "quadro__semana" }, DIAS_CURTOS[daChave(data).getDay()]),
-      el("strong", { class: "quadro__numero numeros" }, daChave(data).getDate()),
-      el("span", { class: "quadro__total numeros" }, atendimentos.length
-        ? [String(atendimentos.length), el("span", { class: "quadro__valor" }, ` · ${formatarMoeda(total)}`)] : ""));
-  });
+  const cabecalhos = colunas.map((coluna, indice) => visaoDiaria()
+    ? cabecalhoDoProfissional(coluna.ids[0], daColuna(coluna), estreita(indice))
+    : cabecalhoDoDia(coluna.data, daColuna(coluna), estreita(indice)));
 
   const horas = [];
   for (let hora = faixa.inicio; hora < faixa.fim; hora += 60) {
     horas.push(el("span", { class: "numeros", style: `--inicio: ${hora - faixa.inicio}` }, horaTexto(hora)));
   }
 
+  const classes = ["quadro__grade"];
+  if (visao.direcao) classes.push(visao.direcao > 0 ? "quadro__grade--avanca" : "quadro__grade--volta");
+  visao.direcao = 0;
   const grade = el("div", {
-    class: "quadro__grade",
-    style: `grid-template-columns: var(--coluna-horas) ${colunas.join(" ")}`
+    class: classes.join(" "),
+    style: `grid-template-columns: var(--coluna-horas) ${larguras.join(" ")}`
   },
   el("div", { class: "quadro__canto" }),
   cabecalhos,
   el("div", { class: "quadro__horas", style: `--minutos: ${faixa.fim - faixa.inicio}` }, horas),
-  dias.map(data => colunaDoDia(data, faixa, fechadoSemNada(data))));
+  colunas.map((coluna, indice) => colunaDoQuadro(coluna, faixa, estreita(indice))));
   grade.dataset.inicio = faixa.inicio;
   grade.dataset.minutos = faixa.fim - faixa.inicio;
 
+  $("#quadro").setAttribute("aria-label", visaoDiaria()
+    ? `Atendimentos de ${formatarData(visao.dia, { weekday: "long", day: "numeric", month: "long" })}`
+    : "Atendimentos da semana");
   $("#quadro").replaceChildren(grade);
   ajustarEscala();
 }
 
-// A semana inteira cabe na tela, sem rolar o quadro: os minutos se esticam ou encolhem conforme
+// O quadro inteiro cabe na tela, sem rolar: os minutos se esticam ou encolhem conforme
 // o espaço que sobra embaixo dele. Abaixo do mínimo, a página rola um pouco em vez de espremer os blocos.
 function ajustarEscala() {
   const quadro = $("#quadro");
   const grade = quadro.querySelector(".quadro__grade");
   if (!grade || !quadro.offsetParent) return;
-  const celular = matchMedia("(max-width: 899px)").matches;
+  const celular = CELULAR.matches;
   const topo = quadro.getBoundingClientRect().top + window.scrollY;
-  const cabecalho = quadro.querySelector(".quadro__dia").offsetHeight;
+  const cabecalho = quadro.querySelector(".quadro__canto").offsetHeight;
   const abas = celular ? $(".abas").offsetHeight : 0;
   const sobra = window.innerHeight - topo - cabecalho - abas - 10;
   const px = Math.min(2.4, Math.max(celular ? 0.72 : 1, sobra / Number(grade.dataset.minutos)));
@@ -331,6 +480,12 @@ window.addEventListener("resize", () => {
   });
 });
 window.addEventListener("load", ajustarEscala);
+// Girar o celular ou redimensionar a janela pode trocar entre a visão do dia e a da semana.
+CELULAR.addEventListener("change", () => {
+  abrirMiniCalendario(false);
+  abrirListaSemana(false);
+  desenharAgenda();
+});
 
 // Horário livre sob o ponteiro, em passos da agenda. null = passado, fechado ou ocupado.
 function horarioLivreNoPonto(evento) {
@@ -346,8 +501,21 @@ function horarioLivreNoPonto(evento) {
 $("#quadro").addEventListener("click", evento => {
   const livre = horarioLivreNoPonto(evento);
   if (!livre) return;
-  abrirNovo(livre.data, horaTexto(livre.inicio));
+  abrirNovo(livre.data, horaTexto(livre.inicio), livre.coluna.dataset.profissionalId);
 });
+
+// Celular: deslizar o dedo para o lado troca de dia.
+let toqueInicial = null;
+$("#quadro").addEventListener("touchstart", evento => {
+  toqueInicial = evento.touches.length === 1 ? { x: evento.touches[0].clientX, y: evento.touches[0].clientY } : null;
+}, { passive: true });
+$("#quadro").addEventListener("touchend", evento => {
+  if (!toqueInicial || !visaoDiaria()) return;
+  const dx = evento.changedTouches[0].clientX - toqueInicial.x;
+  const dy = evento.changedTouches[0].clientY - toqueInicial.y;
+  toqueInicial = null;
+  if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) irPara(somarDias(visao.dia, dx < 0 ? 1 : -1));
+}, { passive: true });
 
 // No computador, um contorno mostra o horário livre antes do clique.
 const fantasma = el("div", { class: "quadro__fantasma", "aria-hidden": "true" });
@@ -365,29 +533,76 @@ $("#quadro").addEventListener("pointermove", evento => {
 });
 $("#quadro").addEventListener("pointerleave", () => fantasma.remove());
 
+// Atendimentos da semana (no celular, do dia): o botão mostra quantos e quanto; aberto, lista um por um, por dia.
+function itemDaLista(agendamento, data) {
+  const servicos = agendamento.servicos.map(id => servicoPorId(estado, id)).filter(Boolean);
+  const conflito = data >= hoje() && conflitoDoAtendimento(estado, agendamento, data);
+  return el("li", {}, el("button", {
+    type: "button",
+    class: `lista-semana__item${conflito ? " lista-semana__item--conflito" : ""}`,
+    "data-profissional": indiceProfissional(agendamento.profissionalId) % 4,
+    onclick: () => {
+      abrirListaSemana(false);
+      abrirDetalhe(agendamento.id, data);
+    }
+  },
+  el("span", { class: "lista-semana__hora numeros" }, agendamento.inicio),
+  el("span", { class: "lista-semana__texto" },
+    el("strong", {}, agendamento.cliente.nome),
+    el("span", {}, servicos.map(servico => servico.nome).join(" + "),
+      visao.filtro ? "" : ` · ${nomeProfissional(agendamento.profissionalId)}`)),
+  el("span", { class: "lista-semana__simbolos" },
+    conflito && icone("alerta", "icone icone--alerta"),
+    agendamento.repeticao.frequencia !== "nenhuma" && icone("repetir"))));
+}
+
 function desenharResumoDaSemana() {
-  const dias = diasDaSemana();
+  const diaria = visaoDiaria();
+  const dias = diaria ? [visao.dia] : diasDaSemana();
   const atendimentos = dias.flatMap(data => doDia(data).map(agendamento => ({ agendamento, data })));
   const total = atendimentos.reduce((soma, item) => soma + item.agendamento.preco, 0);
   const conflitos = atendimentos.filter(({ agendamento, data }) =>
     data >= hoje() && conflitoDoAtendimento(estado, agendamento, data)).length;
-  $("#semanaResumo").textContent = atendimentos.length
-    ? `${atendimentos.length} ${atendimentos.length === 1 ? "atendimento" : "atendimentos"} na semana · ${formatarMoeda(total)}` +
-      (conflitos ? ` · ${conflitos} para remarcar` : "")
-    : "Nenhum atendimento nesta semana. Toque num horário livre para marcar.";
+  const quantos = `${atendimentos.length} ${atendimentos.length === 1 ? "atendimento" : "atendimentos"}`;
+
+  const botao = $("#semanaResumo");
+  botao.setAttribute("aria-label", `${quantos} ${diaria ? "no dia" : "na semana"}, ${formatarMoeda(total)}` +
+    (conflitos ? `, ${conflitos} para remarcar` : "") + ". Ver lista");
+  botao.replaceChildren(
+    icone("lista", "icone resumo-semana__lista"),
+    el("strong", {}, atendimentos.length),
+    el("span", { class: "resumo-semana__rotulo" }, atendimentos.length === 1 ? " atendimento" : " atendimentos"),
+    atendimentos.length ? el("span", { class: "resumo-semana__valor" }, ` · ${formatarMoeda(total)}`) : "",
+    conflitos ? icone("alerta", "icone icone--alerta") : "",
+    icone("seta", "icone suspenso__seta"));
+
+  const porDia = dias.map(data => ({ data, itens: doDia(data) })).filter(dia => dia.itens.length);
+  $("#listaSemana").replaceChildren(
+    el("p", { class: "lista-semana__total numeros" }, `${quantos} · ${formatarMoeda(total)}`,
+      conflitos ? el("span", {}, ` · ${conflitos} para remarcar`) : ""),
+    ...porDia.map(({ data, itens }) => el("section", { class: "lista-semana__dia" },
+      el("h3", { class: "lista-semana__data" },
+        capitalizar(formatarData(data, { weekday: "long", day: "numeric", month: "short" })),
+        el("span", { class: "numeros" }, formatarMoeda(somaDosValores(itens)))),
+      el("ul", {}, itens.map(agendamento => itemDaLista(agendamento, data))))),
+    porDia.length ? "" : el("p", { class: "lista-semana__vazia" },
+      `Nenhum atendimento ${diaria ? "neste dia" : "nesta semana"}. Toque num horário livre da agenda para marcar.`));
 }
 
 function desenharLegenda() {
   $("#legendaAgenda").replaceChildren(
     el("span", {}, icone("repetir"), "Recorrente"),
     ...servicosAtivos(estado).map(servico => el("span", {}, iconeDeServico(servico.icone), servico.nome)),
-    el("span", {}, icone("alerta", "icone icone--alerta"), "Remarcar"));
+    el("span", {}, icone("alerta", "icone icone--alerta"), "Remarcar"),
+    el("span", { class: "legenda__dica" }, icone("mais"),
+      `Horário livre: ${matchMedia("(hover: hover)").matches ? "clique" : "toque"} para marcar`));
 }
 
 function desenharAgenda() {
   desenharFiltro();
   desenharMiniCalendario();
   desenharResumoDaSemana();
+  desenharDias();
   desenharQuadro();
   desenharLegenda();
 }
@@ -399,12 +614,14 @@ function mudarMes(diferenca) {
   desenharMiniCalendario();
 }
 
-const andar = direcao => setasAndamSemana() ? irParaSemana(somarDias(visao.semana, direcao * 7)) : mudarMes(direcao);
+const andar = direcao => setasAndamNaAgenda()
+  ? irPara(somarDias(visao.dia, direcao * (visaoDiaria() ? 1 : 7)))
+  : mudarMes(direcao);
 $("#mesAnterior").addEventListener("click", () => andar(-1));
 $("#mesSeguinte").addEventListener("click", () => andar(1));
-$("#irHoje").addEventListener("click", () => irParaSemana(inicioDaSemana(hoje())));
-$("#mesTitulo").addEventListener("click", () =>
-  abrirMiniCalendario(!$("#miniCalendario").classList.contains("mini-calendario--aberto")));
+$("#irHoje").addEventListener("click", () => irPara(hoje()));
+$("#mesTitulo").addEventListener("click", () => abrirMiniCalendario(!estaAberto("painelCalendario")));
+$("#semanaResumo").addEventListener("click", () => abrirListaSemana(!estaAberto("listaSemana")));
 
 /* Detalhe de um atendimento */
 
@@ -601,15 +818,16 @@ function atualizarHorariosNovo() {
     ? `${duracao} min · ${formatarMoeda(preco)}${repete ? " por atendimento" : ""}${regra}` : "";
 }
 
-// Janela de novo atendimento: vem com o dia e a hora tocados no quadro e o profissional do filtro.
+// Janela de novo atendimento: vem com o dia e a hora tocados no quadro e o profissional da coluna
+// (ou do filtro).
 let horarioDesejado = null;
-function abrirNovo(data, horario = null) {
+function abrirNovo(data, horario = null, profissionalId = visao.filtro) {
   formNovo.elements.nome.value = "";
   formNovo.elements.telefone.value = "";
   $("#novoErro").textContent = "";
   $("#novoData").value = data;
   horarioDesejado = horario;
-  if (visao.filtro) $("#novoProfissional").value = visao.filtro;
+  if (profissionalId) $("#novoProfissional").value = profissionalId;
   atualizarHorariosNovo();
   $("#janelaNovo").showModal();
   // No celular, focar o nome já abriria o teclado por cima da janela.
@@ -623,8 +841,6 @@ function atualizarQuandoNovo() {
     ? capitalizar(formatarData(data, { weekday: "long", day: "numeric", month: "long" })) + (horario ? ` · ${horario}` : "")
     : "";
 }
-
-$("#novoAtendimento").addEventListener("click", () => abrirNovo(proximoDiaAberto(visao.semana > hoje() ? visao.semana : hoje())));
 
 formNovo.addEventListener("input", atualizarHorariosNovo);
 formNovo.addEventListener("change", atualizarHorariosNovo);
@@ -643,7 +859,7 @@ formNovo.addEventListener("submit", evento => {
   if (!resultado(retorno, "Horário marcado.", $("#novoErro"))) return;
 
   $("#janelaNovo").close();
-  irParaSemana(inicioDaSemana(dados.data));
+  irPara(dados.data);
 });
 
 /* Aviso antes de mudanças que atingem quem já tem horário */
@@ -1043,8 +1259,8 @@ confirmarNoBotao($("#apagarTudo"), "Toque de novo para apagar tudo", () => {
 
 confirmarNoBotao($("#gerarExemplo"), "Toque de novo: troca os atendimentos atuais", () => {
   const retorno = carregarExemplo(gerarExemplo(carregar()));
-  if (!resultado(retorno, `${retorno.total} atendimentos de exemplo gerados (agosto a outubro).`)) return;
-  irParaSemana(inicioDaSemana(hoje()));
+  if (!resultado(retorno, `${retorno.total} atendimentos de exemplo gerados (agosto a outubro e a semana atual lotada).`)) return;
+  irPara(hoje());
   atualizarTudo();
 });
 
@@ -1068,6 +1284,7 @@ mascararTelefone(formNovo.elements.telefone);
 desenharFormNovo();
 preencherDuracoes();
 desenharIconesDeServico();
+montarFiltro();
 iniciarRelatorios(() => estado);
 $("#ausenciaProfissional").replaceChildren(...opcoesProfissionais());
 atualizarTudo();

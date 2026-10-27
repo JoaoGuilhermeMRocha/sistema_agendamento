@@ -1,10 +1,12 @@
 // Dados de exemplo para testar e demonstrar o painel: atendimentos de agosto a outubro do ano atual,
-// com clientes que voltam, algumas séries recorrentes e mais movimento no fim de semana.
+// com clientes que voltam, algumas séries recorrentes e mais movimento no fim de semana. A semana atual
+// sai lotada: todo horário livre de cada profissional ganha um atendimento.
 // Respeita as mesmas regras da agenda (expediente, pausa, bloqueio, ausência e um cliente por vez
 // para cada barbeiro). É sempre igual: gerar de novo dá o mesmo resultado.
 import { config } from "./config.js";
 import {
-  daChave, datasDaSerie, expedienteDoDia, horaTexto, minutos, motivoIndisponivel, servicosAtivos, somarDias, somarServicos
+  daChave, datasDaSerie, expedienteDoDia, hoje, horaTexto, inicioDaSemana, minutos, motivoIndisponivel, servicosAtivos,
+  somarDias, somarServicos
 } from "./agenda.js";
 
 // Atendimentos por mês (mês de 1 a 12), contando as ocorrências das séries.
@@ -129,6 +131,29 @@ export function gerarExemplo(estado) {
       novo(cliente, servicos, profissionalId, data, horaTexto(inicio), { frequencia: "nenhuma", vezes: 1 }, sorte() < 0.4 ? "cliente" : "painel");
       ocupar(data, profissionalId, inicio, duracao);
       faltam--;
+    }
+  }
+
+  // Semana atual lotada: em cada horário livre entra um atendimento que caiba no espaço até o próximo
+  // compromisso. Com um serviço de 15 min (sobrancelha) não sobra buraco nenhum.
+  const segunda = inicioDaSemana(hoje());
+  for (let dia = 0; dia < 7; dia++) {
+    const data = somarDias(segunda, dia);
+    for (const { id: profissionalId } of config.profissionais) {
+      const expediente = expedienteDoDia(estado, profissionalId, data);
+      if (!expediente) continue;
+      for (let inicio = minutos(expediente.inicio); inicio < minutos(expediente.fim); inicio += passo) {
+        let espaco = 0;
+        while (livre(data, profissionalId, inicio, espaco + passo)) espaco += passo;
+        const cabem = combinacoes.filter(([ids]) => somarServicos(estado, ids).duracao <= espaco);
+        if (!cabem.length) continue;
+        const [servicos] = escolherComPeso(sorte, cabem, ([, peso]) => peso);
+        const duracao = somarServicos(estado, servicos).duracao;
+        const cliente = escolherComPeso(sorte, CLIENTES.map((_, indice) => indice), indice => 1 / (indice + 3));
+        novo(cliente, servicos, profissionalId, data, horaTexto(inicio), { frequencia: "nenhuma", vezes: 1 }, sorte() < 0.4 ? "cliente" : "painel");
+        ocupar(data, profissionalId, inicio, duracao);
+        inicio += duracao - passo;
+      }
     }
   }
   return agendamentos;

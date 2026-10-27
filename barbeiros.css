@@ -151,9 +151,9 @@ body { padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
 
 .chip__cor { width: 10px; height: 10px; border-radius: 50%; background: var(--cor-prof); }
 
-/* No celular tudo vira uma coluna só, nesta ordem. O título fica só para leitor de tela: a aba já diz "Agenda". */
+/* Faixa de opções em cima e o quadro ocupando o resto. No celular a legenda vai para baixo do quadro;
+   no computador, fica numa coluna estreita à esquerda dele. */
 .agenda { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
-.agenda__lateral, .agenda__controles { display: contents; }
 .agenda__titulo {
   position: absolute;
   width: 1px;
@@ -162,52 +162,60 @@ body { padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
   clip-path: inset(50%);
   white-space: nowrap;
 }
-.mini-calendario { order: 1; }
-.agenda__filtro { order: 2; }
+.agenda__faixa { order: 1; }
+.dias { order: 2; }
 .quadro { order: 3; }
-.quadro-semana__resumo { order: 4; }
-.legenda { order: 5; }
+.legenda { order: 4; }
 
-.quadro-semana__resumo { color: var(--cor-texto-suave); font-size: 14px; font-weight: 600; }
-
-/* No celular, "Novo atendimento" é um botão redondo flutuando sobre a agenda. */
-.agenda__novo {
-  position: fixed;
-  right: 16px;
-  bottom: calc(86px + env(safe-area-inset-bottom));
-  z-index: var(--z-barra);
-  width: 56px;
-  height: 56px;
-  padding: 0;
-  border-radius: 50%;
-  box-shadow: var(--sombra-2);
+.agenda__faixa {
+  position: relative;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
 }
 
-.agenda__novo .icone { width: 26px; height: 26px; }
-.agenda__novo-texto { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+/* Painel que abre por cima do quadro (calendário e lista da semana) */
 
-/* Mini calendário: cada linha é uma semana */
+.suspenso {
+  position: absolute;
+  top: calc(100% + 6px);
+  z-index: 1;
+  padding: 12px;
+  border: 1px solid var(--cor-linha);
+  border-radius: var(--raio-m);
+  background: var(--cor-superficie);
+  box-shadow: var(--sombra-2);
+  animation: surge .25s var(--mola);
+}
 
-.mini-calendario { padding: 12px; }
-.mini-calendario__topo { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.suspenso__seta { width: 16px; height: 16px; flex: none; transform: rotate(90deg); transition: transform .25s var(--mola); }
+[aria-expanded="true"] > .suspenso__seta { transform: rotate(-90deg); }
+
+/* Mini calendário: a barra do mês fica sempre à mostra; aberto, mostra o mês com uma semana por linha. */
+
+.mini-calendario { position: relative; display: flex; flex: 1 1 100%; align-items: center; gap: 6px; }
 .mini-calendario__navegacao { display: flex; gap: 6px; margin-left: auto; }
+.mini-calendario__painel { left: 0; width: min(320px, 100%); }
 
 .mini-calendario__mes {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   min-height: 44px;
-  padding: 0 4px;
+  padding: 0 10px 0 8px;
   border: 0;
+  border-radius: 999px;
   background: none;
   font-family: var(--fonte-titulo);
   font-size: 18px;
   font-weight: 800;
   white-space: nowrap;
+  transition: background-color .2s;
 }
 
-.mini-calendario__seta { width: 16px; height: 16px; transform: rotate(90deg); transition: transform .25s var(--mola); }
-.mini-calendario__mes[aria-expanded="true"] .mini-calendario__seta { transform: rotate(-90deg); }
+.mini-calendario__mes[aria-expanded="true"] { background: var(--cor-superficie-2); }
 
 .mini-calendario__cabeca, .mini-calendario__semana { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
 .mini-calendario__cabeca span { padding: 4px 0; color: var(--cor-texto-suave); font-size: 12px; font-weight: 700; text-align: center; }
@@ -224,7 +232,7 @@ body { padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
   transition: background-color .2s, transform .18s var(--mola);
 }
 
-.mini-calendario__semana:active { transform: scale(.97); }
+button.mini-calendario__semana:active { transform: scale(.97); }
 .mini-calendario__semana[aria-pressed="true"] { background: var(--cor-enfase); color: var(--cor-enfase-texto); }
 
 .mini-calendario__dia {
@@ -240,6 +248,19 @@ body { padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
   font-variant-numeric: tabular-nums;
 }
 
+/* No celular cada dia é um botão. */
+button.mini-calendario__dia {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  transition: background-color .2s, transform .18s var(--mola);
+}
+button.mini-calendario__dia:active { transform: scale(.92); }
+.mini-calendario__dia[aria-pressed="true"] { background: var(--cor-enfase); color: var(--cor-enfase-texto); opacity: 1; }
+
 .mini-calendario__dia--fora { opacity: .35; }
 .mini-calendario__dia--hoje { box-shadow: inset 0 0 0 2px var(--cor-destaque); }
 .mini-calendario__dia--conflito::after {
@@ -252,7 +273,174 @@ body { padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
   background: var(--cor-perigo);
 }
 
-/* Quadro da semana: cabe inteiro na tela. A escala (--px-min) é calculada no barbeiros.js. */
+/* Filtro de profissional: trilho com um cursor que desliza até a opção escolhida. */
+
+.seletor {
+  --opcoes: 3;
+  --escolhida: 0;
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(var(--opcoes), minmax(0, 1fr));
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 3px;
+  border: 1px solid var(--cor-linha);
+  border-radius: 999px;
+  background: var(--cor-superficie-2);
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.seletor__cursor {
+  position: absolute;
+  inset-block: 3px;
+  left: 3px;
+  width: calc((100% - 6px) / var(--opcoes));
+  border-radius: 999px;
+  background: var(--cor-enfase);
+  box-shadow: var(--sombra-1);
+  transform: translateX(calc(100% * var(--escolhida)));
+  transition: transform .3s var(--mola);
+}
+
+.seletor__opcao {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 38px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--cor-texto-suave);
+  font-size: 14px;
+  font-weight: 700;
+  transition: color .2s;
+}
+
+.seletor__opcao[aria-checked="true"] { color: var(--cor-enfase-texto); }
+.seletor__opcao .chip__cor { flex: none; }
+/* A cor do profissional pode ser a mesma do cursor: o contorno mantém a bolinha à vista. */
+.seletor__opcao[aria-checked="true"] .chip__cor { box-shadow: 0 0 0 1.5px var(--cor-enfase-texto); }
+.seletor__nome { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Atendimentos da semana: botão com o total; aberto, a lista por dia. */
+
+.resumo-semana { flex: none; }
+
+.resumo-semana__botao {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--cor-linha);
+  border-radius: 999px;
+  background: var(--cor-superficie);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background-color .2s, border-color .2s;
+}
+
+.resumo-semana__botao[aria-expanded="true"] { border-color: var(--cor-linha-forte); background: var(--cor-superficie-2); }
+.resumo-semana__botao strong { font-weight: 800; }
+.resumo-semana__botao > .icone:not(.suspenso__seta) { width: 18px; height: 18px; }
+.resumo-semana__lista { color: var(--cor-texto-suave); }
+.resumo-semana__botao .icone--alerta { color: var(--cor-perigo); }
+.resumo-semana__valor { color: var(--cor-texto-suave); }
+
+.resumo-semana__painel {
+  right: 0;
+  width: min(400px, 100%);
+  max-height: min(560px, calc(100dvh - 220px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-block: 8px;
+}
+
+.lista-semana__total { padding: 6px 4px 8px; color: var(--cor-texto-suave); font-size: 14px; font-weight: 700; }
+.lista-semana__total span { color: var(--cor-perigo); }
+.lista-semana__vazia { padding: 4px 4px 8px; color: var(--cor-texto-suave); font-size: 14px; }
+
+.lista-semana__dia { padding-top: 6px; border-top: 1px solid var(--cor-linha); }
+.lista-semana__dia ul { display: grid; gap: 2px; margin: 0 0 6px; padding: 0; list-style: none; }
+
+.lista-semana__data {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 4px 6px;
+  font-family: var(--fonte-texto);
+  font-size: 13px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+.lista-semana__data span { color: var(--cor-texto-suave); font-weight: 700; text-transform: none; }
+
+.lista-semana__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 6px 8px 6px 10px;
+  border: 0;
+  border-left: 3px solid var(--cor-prof);
+  border-radius: var(--raio-p);
+  background: none;
+  text-align: left;
+  transition: background-color .2s;
+}
+
+.lista-semana__item--conflito { --cor-prof: var(--cor-perigo); }
+.lista-semana__hora { flex: none; width: 44px; font-size: 14px; font-weight: 800; }
+.lista-semana__texto { display: grid; flex: 1; min-width: 0; }
+.lista-semana__texto > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lista-semana__texto strong { font-size: 15px; }
+.lista-semana__texto span { color: var(--cor-texto-suave); font-size: 13px; }
+.lista-semana__simbolos { display: flex; flex: none; gap: 4px; color: var(--cor-texto-suave); }
+.lista-semana__simbolos .icone { width: 16px; height: 16px; }
+.lista-semana__simbolos .icone--alerta { color: var(--cor-perigo); }
+
+/* Celular: faixa com os dias da semana, em cima do quadro do dia. */
+
+.dias { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; margin-top: -4px; }
+
+.dias__dia {
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  gap: 1px;
+  min-width: 0;
+  min-height: 60px;
+  padding: 5px 0 3px;
+  border: 0;
+  border-radius: var(--raio-m);
+  background: none;
+  color: var(--cor-texto);
+  transition: background-color .2s, transform .18s var(--mola);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.dias__dia:active { transform: scale(.94); }
+.dias__semana { color: var(--cor-texto-suave); font-size: 11px; font-weight: 700; text-transform: uppercase; }
+.dias__numero { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; font-size: 16px; font-weight: 800; }
+.dias__quantos { display: inline-flex; align-items: center; gap: 3px; min-height: 14px; color: var(--cor-texto-suave); font-size: 11px; font-weight: 700; }
+.dias__dia--hoje .dias__semana { color: var(--cor-destaque-forte); }
+.dias__dia--hoje .dias__numero { background: var(--cor-destaque); color: var(--cor-destaque-texto); }
+.dias__dia--fechado .dias__numero { color: var(--cor-texto-suave); font-weight: 600; }
+.dias__dia--conflito .dias__quantos::after { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--cor-perigo); }
+.dias__dia[aria-pressed="true"] { background: var(--cor-enfase); color: var(--cor-enfase-texto); }
+.dias__dia[aria-pressed="true"] :is(.dias__semana, .dias__quantos, .dias__numero) { color: inherit; }
+/* Sobre o creme, o contorno mantém o ponto de conflito à vista. */
+.dias__dia[aria-pressed="true"] .dias__quantos::after { box-shadow: 0 0 0 1.5px var(--cor-enfase-texto); }
+
+/* Quadro: cabe inteiro na tela. A escala (--px-min) é calculada no barbeiros.js. */
 
 .quadro {
   --px-min: 1px;
@@ -264,6 +452,11 @@ body { padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
 }
 
 .quadro__grade { display: grid; }
+/* Ao trocar de dia ou de semana, o quadro entra pelo lado para onde se andou. */
+.quadro__grade--avanca { animation: quadro-avanca .28s var(--mola); }
+.quadro__grade--volta { animation: quadro-volta .28s var(--mola); }
+@keyframes quadro-avanca { from { opacity: 0; transform: translateX(24px); } }
+@keyframes quadro-volta { from { opacity: 0; transform: translateX(-24px); } }
 
 .quadro__canto, .quadro__dia { border-bottom: 1px solid var(--cor-linha); }
 
@@ -284,6 +477,21 @@ body { padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
 .quadro__dia--fechado { padding-inline: 6px; color: var(--cor-texto-suave); }
 .quadro__dia--fechado .quadro__numero { min-width: 0; }
 .quadro__total { max-width: 100%; min-height: 15px; overflow: hidden; color: var(--cor-texto-suave); font-size: 11px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Visão do dia: o cabeçalho de cada coluna é o profissional. */
+.quadro__dia--profissional { gap: 2px; padding-block: 8px 6px; }
+.quadro__profissional {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 15px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.quadro__profissional .chip__cor { flex: none; }
+.quadro__dia--profissional .quadro__total { font-size: 12px; }
 
 .quadro__horas { position: relative; height: calc(var(--minutos) * var(--px-min)); }
 
@@ -442,34 +650,37 @@ body { padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
 .legenda:empty { display: none; }
 .legenda span { display: inline-flex; align-items: center; gap: 5px; }
 .legenda .icone { width: 15px; height: 15px; }
+.legenda__dica { color: var(--cor-destaque-forte); }
 
 @media (hover: hover) {
   .bloco:hover { z-index: 2; box-shadow: var(--sombra-2); }
-  .mini-calendario__semana:hover:not([aria-pressed="true"]) { background: var(--cor-superficie-2); }
+  button.mini-calendario__semana:hover:not([aria-pressed="true"]),
+  button.mini-calendario__dia:hover:not([aria-pressed="true"]),
+  .dias__dia:hover:not([aria-pressed="true"]) { background: var(--cor-superficie-2); }
+  .mini-calendario__mes:hover { background: var(--cor-superficie-2); }
+  .mini-calendario__mes:hover .suspenso__seta { color: var(--cor-destaque); }
+  .seletor__opcao:hover:not([aria-checked="true"]) { color: var(--cor-texto); }
+  .resumo-semana__botao:hover { border-color: var(--cor-linha-forte); }
+  .lista-semana__item:hover { background: var(--cor-superficie-2); }
   .botao-icone:hover { background: var(--cor-linha); }
-}
-
-@media (max-width: 599px) {
-  .quadro__valor { display: none; }
-  /* Coluna estreita: o nome mostra o máximo de letras e o horário fica só no detalhe. */
-  .bloco { padding: 2px 2px 2px 3px; border-left-width: 2px; }
-  .bloco__nome { font-size: 11px; text-overflow: clip; }
-  .bloco__hora { display: none; }
-  .quadro__dia { padding: 4px 0; }
-  .quadro__dia--fechado { padding-inline: 4px; }
-  .quadro__numero { height: 26px; min-width: 26px; font-size: 15px; }
-  .quadro__total { min-height: 13px; font-size: 10px; }
 }
 
 @media (max-width: 899px) {
   body[data-aba="agenda"] .painel { padding-top: 12px; }
-  /* Fechado, o mini calendário vira só a barra do mês (os dias da semana já estão no quadro);
-     tocar no mês abre o mês inteiro. */
-  .mini-calendario { padding: 2px 8px; }
-  .mini-calendario__topo { margin-bottom: 0; }
-  .mini-calendario:not(.mini-calendario--aberto) :is(.mini-calendario__cabeca, .mini-calendario__semanas) { display: none; }
-  .mini-calendario--aberto { padding-bottom: 8px; }
-  .mini-calendario--aberto .mini-calendario__semanas { animation: surge .3s var(--mola); }
+  /* Visão do dia: a coluna é larga, então o bloco ganha letra maior. */
+  .bloco__nome { font-size: 13px; }
+  .bloco__simbolos .icone { width: 14px; height: 14px; }
+}
+
+/* Celular: o botão da semana mostra só a quantidade; o resto está na lista. */
+@media (max-width: 599px) {
+  .resumo-semana__rotulo, .resumo-semana__valor { display: none; }
+  .seletor__opcao { gap: 5px; padding: 0 4px; font-size: 13px; }
+}
+
+@media (max-width: 399px) {
+  .resumo-semana__lista { display: none; }
+  .resumo-semana__botao { padding: 0 10px 0 14px; }
 }
 
 @media (min-width: 600px) {
@@ -486,18 +697,15 @@ body { padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
   .secao__topo { grid-template-columns: 1fr auto; align-items: end; }
   .secao__topo .chips--rolagem { margin: 0; padding: 2px; }
 
-  .agenda { grid-template-columns: 296px minmax(0, 1fr); gap: 24px; align-items: start; }
-  .agenda__lateral, .agenda__controles { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-content: start; }
-  .agenda__lateral > *, .agenda__controles > * { order: 0; }
-  .agenda__filtro { flex-wrap: nowrap; gap: 6px; }
-  .agenda__filtro .chip { padding: 0 12px; }
-
-  .mini-calendario__mes { pointer-events: none; }
-  .mini-calendario__seta { display: none; }
-
-  .agenda__novo { position: static; width: 100%; height: auto; padding: 12px 18px; border-radius: 999px; box-shadow: none; }
-  .agenda__novo .icone { width: 20px; height: 20px; }
-  .agenda__novo-texto { position: static; width: auto; height: auto; overflow: visible; clip-path: none; }
+  .agenda { grid-template-columns: max-content minmax(0, 1fr); gap: 14px 20px; align-items: start; }
+  .agenda__faixa { grid-column: 1 / -1; flex-wrap: nowrap; gap: 12px; }
+  .dias { display: none; }
+  .mini-calendario { flex: none; }
+  .seletor { flex: 0 1 380px; }
+  .resumo-semana { position: relative; margin-left: auto; }
+  .resumo-semana__painel { width: 400px; }
+  .legenda { grid-row: 2; grid-column: 1; flex-direction: column; flex-wrap: nowrap; gap: 12px; max-width: 150px; padding-top: 8px; }
+  .quadro { grid-row: 2; grid-column: 2; }
 
   .quadro { margin: 0; border: 1px solid var(--cor-linha); border-radius: var(--raio-g); }
 }
@@ -695,6 +903,7 @@ fieldset.campo legend { margin-bottom: 8px; padding: 0; }
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+  line-clamp: 2;
   line-height: 1.25;
   white-space: normal;
 }

@@ -196,21 +196,94 @@
   color: var(--cor-destaque-texto);
 }
 
-.chip__inicial {
+/* Profissionais: cartões com foto. Com muitos barbeiros, a fileira rola para o lado. */
+
+.profissionais {
+  display: grid;
+  grid-auto-columns: minmax(104px, 1fr);
+  grid-auto-flow: column;
+  gap: 8px;
+  margin: 0 calc(var(--margem) * -1);
+  padding: 4px var(--margem);
+  overflow-x: auto;
+  scroll-padding-inline: var(--margem);
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+.profissionais::-webkit-scrollbar { display: none; }
+
+.profissional {
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  gap: 2px;
+  min-width: 0;
+  padding: 14px 8px 12px;
+  border: 1px solid var(--cor-linha);
+  border-radius: var(--raio-g);
+  background: var(--cor-superficie);
+  color: var(--cor-texto);
+  text-align: center;
+  scroll-snap-align: start;
+  transition: border-color .2s, box-shadow .2s, transform .18s var(--mola);
+  -webkit-tap-highlight-color: transparent;
+}
+.profissional:active { transform: scale(.97); }
+.profissional[aria-pressed="true"] { border-color: var(--cor-enfase); box-shadow: 0 0 0 1px var(--cor-enfase), var(--sombra-1); }
+
+.profissional__foto { position: relative; display: grid; place-items: center; height: 72px; margin-bottom: 8px; }
+.profissional__nome { max-width: 100%; font-size: 15px; font-weight: 800; line-height: 1.2; text-wrap: balance; overflow-wrap: anywhere; }
+.profissional__descricao { max-width: 100%; color: var(--cor-texto-suave); font-size: 12px; line-height: 1.3; }
+
+.profissional__marca {
+  position: absolute;
+  right: -4px;
+  bottom: -2px;
   display: grid;
   place-items: center;
-  width: 26px;
-  height: 26px;
-  margin-left: -8px;
-  border-radius: 9px;
-  background: var(--cor-destaque-suave);
-  color: var(--cor-destaque-forte);
-  font-family: var(--fonte-titulo);
-  font-size: 14px;
-  font-weight: 700;
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--cor-superficie);
+  border-radius: 50%;
+  background: var(--cor-enfase);
+  color: var(--cor-enfase-texto);
+  opacity: 0;
+  transform: scale(.5);
+  transition: opacity .2s, transform .25s var(--mola);
 }
+.profissional__marca .icone { width: 14px; height: 14px; stroke-width: 3; }
+.profissional[aria-pressed="true"] .profissional__marca { opacity: 1; transform: none; }
 
-.chip[aria-pressed="true"] .chip__inicial { background: var(--cor-destaque); color: var(--cor-destaque-texto); }
+.retrato {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--cor-destaque-suave);
+  box-shadow: 0 0 0 2px var(--cor-linha);
+}
+.retrato--inicial { color: var(--cor-destaque-forte); font-family: var(--fonte-titulo); font-size: 28px; font-weight: 700; }
+.profissional[aria-pressed="true"] .retrato { box-shadow: 0 0 0 2px var(--cor-enfase); }
+
+/* "Sem preferência": os retratos de todos, encavalados. */
+.retratos { display: flex; }
+.retratos .retrato { width: 52px; height: 52px; font-size: 20px; box-shadow: 0 0 0 3px var(--cor-superficie); }
+.retratos .retrato + .retrato { margin-left: -18px; }
+.profissional[aria-pressed="true"] .retratos .retrato { box-shadow: 0 0 0 3px var(--cor-superficie); }
+
+/* Retrato pequeno ao lado do nome (resumo e confirmação). */
+.retrato--mini {
+  display: inline-grid;
+  width: 24px;
+  height: 24px;
+  margin-right: 8px;
+  font-size: 12px;
+  vertical-align: middle;
+  box-shadow: none;
+}
 
 /* Dias */
 
@@ -294,7 +367,8 @@
 
 @media (hover: hover) {
   .servico:hover, .dia:hover:not(:disabled):not([aria-pressed="true"]),
-  .horario:hover:not([aria-pressed="true"]) { border-color: var(--cor-linha-forte); }
+  .horario:hover:not([aria-pressed="true"]),
+  .profissional:hover:not([aria-pressed="true"]) { border-color: var(--cor-linha-forte); }
 }
 
 /* Dados do cliente */

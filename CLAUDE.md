@@ -30,14 +30,14 @@ O `server.py` entrega uma **lista fechada** de arquivos (`PAGES` e `ASSETS`), ma
 | --- | --- |
 | `config.js` | **Tudo o que muda por cliente**: nome, selo ("Since 2017"), slogan, endereço, link do Google Maps, WhatsApp, Instagram, profissionais, expediente padrão, parâmetros da agenda, serviços iniciais e produtos iniciais |
 | `tema.css` | **Identidade visual por cliente**: fontes, cores (tokens `--cor-*`, incluindo a cor de cada símbolo de serviço), imagens (`--imagem-*`) e cores do xadrez |
-| `imagens/` | Imagens do cliente: `capa.jpg` (capa do agendamento), `loja.jpg` (topo da loja), `emblema.svg` (logo redondo, usado também como favicon) e `arabesco.svg` (ornamento) |
+| `imagens/` | Imagens do cliente: `capa.jpg` (capa do agendamento), `loja.jpg` (topo da loja), `emblema.svg` (logo redondo, usado também como favicon), `arabesco.svg` (ornamento) e o retrato de cada profissional (hoje `santiago.svg` e `damigo.svg`, silhuetas provisórias até chegarem as fotos) |
 | `agenda.js` | Regras de agenda, em **funções puras**: datas, recorrência, disponibilidade, escolha de profissional e conflitos |
 | `dados.js` | **Camada de dados**. Hoje grava no `localStorage`; é o único arquivo que troca quando entrar o PostgreSQL. Valida tudo como o servidor vai ter que validar |
 | `ui.js` | Peças de interface compartilhadas: `el()`, ícones SVG, `preencherMarca()`, máscara de telefone, links de WhatsApp e Google Maps, aviso flutuante e confirmação com dois toques |
 | `base.css` | Base comum: reset, cabeçalho, botões, campos, chips, folha (`<dialog>`) e ornamentos (`.filete`, `.faixa`, `.arabescos`, `.xadrez`, `.capitone`) |
 | `agendar.*`, `loja.*`, `barbeiros.*` | HTML, CSS e JS de cada página |
 | `relatorios.js`, `relatorios.css` | Aba Relatórios do painel: filtros, indicadores, agrupamento, tabela, CSV e a versão impressa (PDF) |
-| `exemplo.js` | Gerador de dados de exemplo (botão "Gerar dados de exemplo" no rodapé do painel): 150 atendimentos em agosto, 150 em setembro e 100 em outubro do ano atual, com 4 séries recorrentes. Respeita as regras da agenda e é determinístico (semente fixa). As metas ficam em `METAS` |
+| `exemplo.js` | Gerador de dados de exemplo (botão "Gerar dados de exemplo" no rodapé do painel): 150 atendimentos em agosto, 150 em setembro e 100 em outubro do ano atual, com 4 séries recorrentes, e a **semana atual lotada** (todo horário livre de cada profissional ganha um atendimento que caiba no espaço). Respeita as regras da agenda e é determinístico (semente fixa). As metas ficam em `METAS` |
 | `graficos.js` | Gráficos em SVG puro (colunas, barras, linha e rosca), com dica no mouse, toque e teclado |
 | `server.py` | Servidor estático com lista fechada de arquivos |
 | `referencias/` | Material de referência da Santiago (logo, posts e fotos do salão). Não é servido nem usado pelo sistema |
@@ -46,7 +46,7 @@ As páginas preenchem nome, endereço e contatos a partir do `config.js` (`data-
 
 ## Replicar para um novo cliente
 
-1. Editar `config.js`: textos, contatos, serviços iniciais, profissionais e expediente. Trocar o `slug`, que separa os dados salvos de cada barbearia.
+1. Editar `config.js`: textos, contatos, serviços iniciais, profissionais (com foto e descrição) e expediente. Trocar o `slug`, que separa os dados salvos de cada barbearia.
 2. Editar `tema.css`: fontes, cores e caminhos das imagens.
 3. Trocar os arquivos de `imagens/` e o `favicon.svg`.
 4. Ajustar o `<meta name="theme-color">` dos três HTML para a cor de fundo do tema.
@@ -57,6 +57,7 @@ Não espalhe dado de cliente pelo código: o que for específico de uma barbeari
 
 **Cliente (`/agendar`)**
 - Fluxo em 4 etapas: serviços (vários, somando preço e duração; começa sem nenhum marcado), profissional ("Sem preferência" ou um barbeiro), dia e horário (próximos 14 dias, horários a cada 15 min) e dados (nome e WhatsApp com máscara).
+- **Profissional com foto**: cada barbeiro é um cartão (`.profissional`) com retrato redondo, nome e `descricao`, vindos de `config.profissionais` (`foto` e `descricao`). Sem foto, aparece a inicial (`retrato--inicial`). "Sem preferência" mostra os retratos de todos, encavalados. Com 4 barbeiros ou mais, a fileira rola para o lado. O retrato pequeno (`retrato--mini`) aparece também no resumo e na confirmação. Fotos: quadradas, rosto centralizado, 400×400px basta.
 - O cliente marca **um atendimento por vez**. Repetição só pelo painel (decisão da barbearia): o `dados.js` ignora a repetição quando a origem não é `"painel"`.
 - O agendamento é **confirmado na hora**: não há etapa de aprovar ou recusar.
 - No celular, uma barra fixa embaixo mostra o valor e o próximo passo. No computador, o resumo fica num cartão lateral fixo.
@@ -67,12 +68,14 @@ Não espalhe dado de cliente pelo código: o que for específico de uma barbeari
 - O botão "Perguntar" abre o WhatsApp da barbearia com o nome do produto.
 
 **Painel (`/barbeiros`)**: abas embaixo no celular e no topo no computador, navegadas por `#hash`.
-- **Agenda**: semana de segunda a domingo em colunas (estilo kanban), com as horas na esquerda. **O quadro cabe inteiro na tela, sem rolagem própria**: `ajustarEscala()` calcula `--px-min` (pixels por minuto) pelo espaço que sobra, com mínimo de 0,72 no celular e 1 no computador (abaixo disso a página rola um pouco). No computador, a lateral tem o mini calendário (cabeçalho "Out 2026", botão "Hoje" e setas de mês; cada linha é uma semana, ponto vermelho nos dias com conflito) e, abaixo dele, o filtro por profissional (com a cor de cada um), "Novo atendimento", o resumo e a legenda dos símbolos. No celular fica tudo empilhado acima do quadro: fechado, o mini calendário é só a barra do mês e as setas andam de semana; tocar no mês abre o mês inteiro e aí as setas andam de mês. "Novo atendimento" vira um botão redondo flutuante. Dia sem expediente ocupa só a largura do nome do dia e da data (`max-content`).
+- **Agenda**: no computador, semana de segunda a domingo em colunas (estilo kanban), com as horas na esquerda. **No celular (abaixo de 900px) é sempre um dia só**, com uma coluna por profissional (ou uma, com o filtro), cabeçalho com o nome, a quantidade e o valor, e a faixa `.dias` com os 7 dias da semana para trocar de dia (com quantos atendimentos cada um tem). Deslizar o dedo no quadro anda de dia. `colunasDoQuadro()` monta as colunas (`{ data, ids }`) das duas visões, e `visao.dia` guarda o dia escolhido (a semana sai dele). **O quadro cabe inteiro na tela, sem rolagem própria**: `ajustarEscala()` calcula `--px-min` (pixels por minuto) pelo espaço que sobra, com mínimo de 0,72 no celular e 1 no computador (abaixo disso a página rola um pouco). Coluna sem expediente ocupa só a largura do cabeçalho (`max-content`), a não ser que todas estejam fechadas.
+  - **Faixa de opções** (`.agenda__faixa`, acima do quadro, numa linha só no computador): `˅ Out 2026` abre o mini calendário (no computador cada linha é uma semana; no celular cada dia é um botão; ponto vermelho nos dias com conflito), depois "Hoje" e as setas (com o calendário fechado andam de dia no celular e de semana no computador; aberto, andam de mês). Ao lado, o filtro de profissional como seletor deslizante (`.seletor`, `role="radiogroup"`: Todos, Santiago, Damigo, com a cor de cada um; aceita toque, arrasto e as setas do teclado). Por último, o botão com o total da semana (no celular, do dia), que abre a lista dos atendimentos por dia; tocar num item abre o detalhe. Calendário e lista são `.suspenso`: abrem por cima do quadro (não mudam a escala), um de cada vez, e fecham com Esc ou clique fora.
+  - A legenda dos símbolos fica numa coluna estreita à esquerda do quadro no computador e embaixo dele no celular. Não há botão de novo atendimento: marca-se tocando num horário livre.
   - Atendimento = bloco com o primeiro nome do cliente e símbolos: repetição, o ícone de cada serviço e alerta de conflito. Atendimentos no mesmo horário dividem a coluna lado a lado.
   - Trechos sem atendimento (fora do expediente, pausa, folga, ausência, bloqueio) ficam hachurados, com o motivo quando é o mesmo para todos do filtro. Dia em que ninguém trabalha vira coluna estreita. Linha vermelha marca a hora atual.
-  - Tocar num horário livre abre a janela de novo atendimento (`#janelaNovo`, uma `.folha`) com dia, hora e profissional do filtro.
+  - Tocar num horário livre abre a janela de novo atendimento (`#janelaNovo`, uma `.folha`) com dia, hora e profissional da coluna (ou do filtro).
   - Tocar num atendimento abre uma folha com os detalhes, o lembrete pronto no WhatsApp, "Tornar recorrente" (só em avulsos, de qualquer data), "cancelar só este dia" e "encerrar repetição a partir deste dia".
-- **Novo atendimento** (janela, não é mais aba): agendamento manual, com repetição opcional (semanal, quinzenal ou mensal, com 2 a 52 atendimentos ou **sem data para terminar**). O seletor mostra só horários livres. Blocos baixos ganham `bloco--curto` (sem horário) ou `bloco--mini` (uma linha só); no celular o horário fica só no detalhe.
+- **Novo atendimento** (janela aberta pelo horário livre do quadro, não é mais aba nem botão): agendamento manual, com repetição opcional (semanal, quinzenal ou mensal, com 2 a 52 atendimentos ou **sem data para terminar**). O seletor mostra só horários livres. Blocos baixos ganham `bloco--curto` (sem horário) ou `bloco--mini` (uma linha só). Na visão do dia o bloco mostra o nome inteiro do cliente.
 - **Horários**: expediente individual de cada profissional por dia da semana (início, fim e pausa), folgas e ausências por profissional, feriados e bloqueios da barbearia toda. Os três cartões recolhem (`<details class="cartao cartao--recolhivel">`, seta à direita do título) e começam fechados.
 - **Serviços**: cadastrar, editar e remover (nome, preço, duração em passos de 15 min e símbolo na agenda, de `ICONES_DE_SERVICO` em `dados.js`). Cada símbolo tem uma cor própria (tokens `--cor-icone-*` no `tema.css`, aplicados pela classe `icone-servico--<nome>`), para reconhecer o serviço só pela cor. Os serviços ficam nos dados salvos; o `config.js` só tem os iniciais. Remover só marca `removido: true`, para os atendimentos antigos continuarem com o nome, e o último serviço não pode ser removido. Mudar preço ou duração não altera quem já marcou, porque o agendamento guarda `preco` e `duracao`.
 - **Produtos**: cadastrar, **editar** (reaproveita o formulário) e remover. A foto é reduzida para 900px em JPEG antes de salvar.
@@ -127,14 +130,15 @@ Datas são strings `AAAA-MM-DD` e horas são `HH:MM`. Telefones são guardados s
 
 Não há suíte de testes automatizados. Para validar:
 - Abra as três páginas **no mesmo navegador**: os dados são do `localStorage`.
-- Em sessões anteriores os testes foram feitos com o Brave em modo headless via DevTools Protocol, em 360, 390 e 1280px, conferindo erros de console. O "Apagar dados de teste" do painel zera o estado, e o "Gerar dados de exemplo" troca os atendimentos por uma base de agosto a outubro (bom para testar agenda e relatórios).
+- Em sessões anteriores os testes foram feitos com o Brave em modo headless via DevTools Protocol, em 360, 390 e 1280px, conferindo erros de console. O "Apagar dados de teste" do painel zera o estado, e o "Gerar dados de exemplo" troca os atendimentos por uma base de agosto a outubro, com a semana atual lotada (bom para testar agenda e relatórios).
 
 ## Pendências (fora do protótipo)
 
 - Backend com PostgreSQL substituindo `dados.js` por chamadas de API, com validação no servidor, trava contra reserva dupla no banco e fuso horário da barbearia (hoje usa o do navegador).
-- Login no painel, com acesso por barbeiro.
+- Login no painel, com acesso por barbeiro. Junto com ele entra o pedido do Santiago: **cada barbeiro vê só os próprios valores**, e isso vale para ele também, que é o dono. Na agenda, os atendimentos dos outros continuam visíveis, mas sem valor (bloco, detalhe, cabeçalhos e lista). Nos relatórios, o barbeiro vê só os próprios dados: o relatório fica travado nele, sem o filtro e sem o agrupamento por profissional.
 - Armazenamento real das fotos (hoje são data URLs no `localStorage`).
 - Cliente consultar e desmarcar o próprio horário. Lembrete automático no WhatsApp (hoje é um toque, via link `wa.me`).
 - LGPD: hoje há só uma linha de aviso no formulário. Falta política de privacidade e consentimento.
-- Editar profissionais pelo painel (hoje ficam no `config.js`).
+- Editar profissionais pelo painel (hoje ficam no `config.js`), incluindo o envio da foto (dá para reaproveitar o `reduzirFoto()` dos produtos).
+- Trocar os retratos provisórios pelas fotos reais do Santiago e do Damigo, e confirmar as descrições ("Fundador da casa" e "Barbeiro" foram inventadas).
 - Avaliações no Google: o Google não aceita avaliação enviada pelo site (a API só lê e responde). O caminho é o link direto de avaliação do perfil, pedido pelo WhatsApp depois do atendimento e no rodapé. Regras do Google: não filtrar quem é mandado para lá pela nota e não dar brinde em troca.

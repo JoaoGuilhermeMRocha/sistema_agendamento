@@ -166,8 +166,9 @@ export function expedienteDoDia(estado, profissionalId, data) {
   return estado.expedientes[profissionalId]?.[daChave(data).getDay()] || null;
 }
 
+// Bloqueio ou ausência sem horas vale para o dia inteiro: nunca deixa o intervalo livre.
 function intervaloLivre(item, inicio, fim) {
-  return !item.horaInicio || !sobrepoe(inicio, fim, minutos(item.horaInicio), minutos(item.horaFim));
+  return Boolean(item.horaInicio) && !sobrepoe(inicio, fim, minutos(item.horaInicio), minutos(item.horaFim));
 }
 
 // Por que o profissional não atende nesse intervalo, sem contar outros clientes. null = pode atender.

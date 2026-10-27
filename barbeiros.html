@@ -41,40 +41,40 @@
   <main class="painel">
     <!-- Agenda -->
     <section class="secao secao--agenda" data-secao="agenda" aria-labelledby="t-agenda">
+      <!-- O título fica só para leitor de tela: a aba já diz "Agenda". -->
+      <h1 id="t-agenda" class="agenda__titulo">Agenda</h1>
       <div class="agenda">
-        <div class="agenda__lateral">
-          <header class="secao__topo agenda__titulo">
-            <h1 id="t-agenda">Agenda</h1>
-          </header>
-
-          <aside id="miniCalendario" class="mini-calendario cartao" aria-label="Escolher semana">
-            <div class="mini-calendario__topo">
-              <button id="mesTitulo" class="mini-calendario__mes" type="button" aria-expanded="false" aria-controls="semanasDoMes">
-                <span id="mesNome" aria-live="polite"></span>
-                <span data-icone="seta" class="icone mini-calendario__seta"></span>
-              </button>
-              <button id="irHoje" class="botao botao--contorno botao--pequeno" type="button">Hoje</button>
-              <span class="mini-calendario__navegacao">
-                <button id="mesAnterior" class="botao-icone" type="button" aria-label="Mês anterior"><span data-icone="voltar"></span></button>
-                <button id="mesSeguinte" class="botao-icone" type="button" aria-label="Próximo mês"><span data-icone="seta"></span></button>
-              </span>
-            </div>
-            <div class="mini-calendario__cabeca" aria-hidden="true">
-              <span>S</span><span>T</span><span>Q</span><span>Q</span><span>S</span><span>S</span><span>D</span>
-            </div>
-            <div id="semanasDoMes" class="mini-calendario__semanas"></div>
-          </aside>
-
-          <div class="agenda__controles">
-            <div id="filtroAgenda" class="chips agenda__filtro" role="group" aria-label="Mostrar agenda de"></div>
-            <button id="novoAtendimento" class="botao botao--destaque agenda__novo" type="button" aria-label="Novo atendimento">
-              <span data-icone="mais"></span><span class="agenda__novo-texto">Novo atendimento</span>
+        <div class="agenda__faixa">
+          <div id="miniCalendario" class="mini-calendario">
+            <button id="mesTitulo" class="mini-calendario__mes" type="button" aria-expanded="false" aria-controls="painelCalendario"
+                    title="Escolher semana">
+              <span data-icone="seta" class="icone suspenso__seta"></span>
+              <span id="mesNome" aria-live="polite"></span>
             </button>
-            <p id="semanaResumo" class="quadro-semana__resumo numeros"></p>
-            <p id="legendaAgenda" class="legenda"></p>
+            <button id="irHoje" class="botao botao--contorno botao--pequeno" type="button">Hoje</button>
+            <span class="mini-calendario__navegacao">
+              <button id="mesAnterior" class="botao-icone" type="button" aria-label="Semana anterior"><span data-icone="voltar"></span></button>
+              <button id="mesSeguinte" class="botao-icone" type="button" aria-label="Próxima semana"><span data-icone="seta"></span></button>
+            </span>
+            <div id="painelCalendario" class="suspenso mini-calendario__painel" hidden>
+              <div class="mini-calendario__cabeca" aria-hidden="true">
+                <span>S</span><span>T</span><span>Q</span><span>Q</span><span>S</span><span>S</span><span>D</span>
+              </div>
+              <div id="semanasDoMes" class="mini-calendario__semanas"></div>
+            </div>
+          </div>
+
+          <div id="filtroAgenda" class="seletor" role="radiogroup" aria-label="Mostrar agenda de"></div>
+
+          <div id="resumoSemana" class="resumo-semana">
+            <button id="semanaResumo" class="resumo-semana__botao numeros" type="button" aria-expanded="false" aria-controls="listaSemana"></button>
+            <div id="listaSemana" class="suspenso resumo-semana__painel" hidden></div>
           </div>
         </div>
 
+        <!-- Só no celular: os sete dias da semana, para trocar o dia mostrado no quadro. -->
+        <div id="diasSemana" class="dias" role="group" aria-label="Dia mostrado"></div>
+        <p id="legendaAgenda" class="legenda"></p>
         <div id="quadro" class="quadro" role="region" aria-label="Atendimentos da semana"></div>
       </div>
     </section>

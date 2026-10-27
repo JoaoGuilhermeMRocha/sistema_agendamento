@@ -58,14 +58,25 @@ $("#servicos").addEventListener("click", evento => {
 
 /* Etapa 2: profissional */
 
+// Foto do profissional ou, sem foto, a inicial do nome.
+const retrato = (pessoa, classe = "retrato") => pessoa.foto
+  ? el("img", { class: classe, src: pessoa.foto, alt: "", loading: "lazy", decoding: "async" })
+  : el("span", { class: `${classe} retrato--inicial`, "aria-hidden": "true" }, pessoa.nome[0]);
+
+// Cartões com foto. "Sem preferência" mostra os retratos de todos, sobrepostos.
 function desenharProfissionais() {
-  const opcoes = [{ id: null, nome: "Sem preferência" }, ...config.profissionais];
+  const opcoes = [{ id: null, nome: "Sem preferência", descricao: "Quem estiver livre" }, ...config.profissionais];
   $("#profissionais").replaceChildren(...opcoes.map(pessoa => el("button", {
     type: "button",
-    class: "chip",
+    class: "profissional",
     "data-profissional": pessoa.id ?? "",
     "aria-pressed": String(escolha.profissionalId === pessoa.id)
-  }, pessoa.id ? el("span", { class: "chip__inicial", "aria-hidden": "true" }, pessoa.nome[0]) : null, pessoa.nome)));
+  },
+  el("span", { class: "profissional__foto" },
+    pessoa.id ? retrato(pessoa) : el("span", { class: "retratos" }, config.profissionais.slice(0, 3).map(item => retrato(item))),
+    el("span", { class: "profissional__marca", "aria-hidden": "true" }, icone("check"))),
+  el("strong", { class: "profissional__nome" }, pessoa.nome),
+  pessoa.descricao ? el("span", { class: "profissional__descricao" }, pessoa.descricao) : null)));
 }
 
 $("#profissionais").addEventListener("click", evento => {
@@ -184,7 +195,8 @@ function desenharResumo() {
   const profissional = profissionalPorId(escolha.profissionalId);
 
   $("#resumoServicos").textContent = nomes || "—";
-  $("#resumoProfissional").textContent = profissional?.nome || "Sem preferência";
+  $("#resumoProfissional").replaceChildren(
+    profissional ? retrato(profissional, "retrato retrato--mini") : "", profissional?.nome || "Sem preferência");
   $("#resumoQuando").textContent = escolha.data
     ? `${formatarData(escolha.data, { weekday: "short", day: "2-digit", month: "2-digit" })}${escolha.horario ? ` às ${escolha.horario}` : ""}`
     : "—";
@@ -255,13 +267,15 @@ for (const campo of [campos.nome, campos.telefone]) {
 
 function mostrarConfirmacao(agendamento) {
   const { nomes, duracao } = somarServicos(estado, agendamento.servicos);
-  const profissional = profissionalPorId(agendamento.profissionalId).nome;
+  const pessoa = profissionalPorId(agendamento.profissionalId);
+  const profissional = pessoa.nome;
   const quando = formatarData(agendamento.data, { weekday: "long", day: "numeric", month: "long" });
 
   $("#confirmadoTexto").textContent =
     `Te esperamos ${agendamento.data === hoje() ? "hoje" : quando}, às ${agendamento.inicio}, com ${profissional}.`;
   $("#confirmadoDetalhes").replaceChildren(...[
     ["Cliente", `${agendamento.cliente.nome} · ${formatarTelefone(agendamento.cliente.telefone)}`],
+    ["Profissional", [retrato(pessoa, "retrato retrato--mini"), profissional]],
     ["Serviços", `${nomes} · ${duracao} min`],
     ["Valor", formatarMoeda(agendamento.preco)]
   ].map(([rotulo, valor]) => el("div", {}, el("dt", {}, rotulo), el("dd", {}, valor))));
