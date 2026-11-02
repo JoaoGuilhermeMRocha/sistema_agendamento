@@ -95,6 +95,9 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 
+# O barbeiro entra uma vez no celular e fica logado por 30 dias.
+SESSION_COOKIE_AGE = 30 * 24 * 60 * 60
+
 LANGUAGE_CODE = "pt-br"
 # Fuso da barbearia: "hoje" e "horário que já passou" são calculados nele.
 TIME_ZONE = os.environ.get("DJANGO_FUSO", "America/Sao_Paulo")

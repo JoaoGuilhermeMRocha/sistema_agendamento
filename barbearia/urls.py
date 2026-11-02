@@ -7,6 +7,9 @@ urlpatterns = [
     path("publico/horarios", api.horarios),
     path("publico/agendamentos", api.agendar),
 
+    path("painel/entrar", api.entrar),
+    path("painel/sair", api.sair),
+    path("painel/eu", api.eu),
     path("painel/estado", api.estado),
     path("painel/agendamentos", api.atendimentos),
     path("painel/agendamentos/<int:id>/cancelar", api.cancelar),

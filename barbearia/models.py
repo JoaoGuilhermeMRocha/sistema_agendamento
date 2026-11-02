@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import models
 from django.db.models import Q, F
 
@@ -22,6 +23,11 @@ class Profissional(models.Model):
     foto = models.ImageField(upload_to="profissionais/", blank=True)
     ordem = models.PositiveSmallIntegerField(default=0, help_text="Posição na lista do agendamento.")
     ativo = models.BooleanField(default=True)
+    # Login do barbeiro no painel. Ele vê os valores só dos próprios atendimentos.
+    usuario = models.OneToOneField(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="profissional", verbose_name="usuário do painel",
+    )
 
     class Meta:
         ordering = ["ordem", "nome"]

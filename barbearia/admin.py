@@ -14,8 +14,9 @@ class ExpedienteInline(admin.TabularInline):
 
 @admin.register(Profissional)
 class ProfissionalAdmin(admin.ModelAdmin):
-    list_display = ["nome", "id", "descricao", "ordem", "ativo"]
+    list_display = ["nome", "id", "descricao", "usuario", "ordem", "ativo"]
     list_editable = ["ordem", "ativo"]
+    autocomplete_fields = ["usuario"]
     inlines = [ExpedienteInline]
 
 

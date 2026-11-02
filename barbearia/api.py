@@ -4,7 +4,8 @@ As respostas seguem o formato do web/dados.js: { ok: true, ... } ou { ok: false,
 Datas em "AAAA-MM-DD", horas em "HH:MM" e os nomes dos campos iguais aos do front (camelCase).
 
 /api/publico/... é aberta: só mostra o que a página do cliente precisa, nunca dado de outros clientes.
-/api/painel/...  é do painel dos barbeiros. O login entra na etapa 5.
+/api/painel/...  exige login (menos entrar e sair). Todos os barbeiros podem alterar tudo, mas cada
+um vê o valor só dos próprios atendimentos: nos dos colegas, "preco" vem null.
 """
 
 import json
@@ -12,25 +13,51 @@ from datetime import timedelta
 from functools import wraps
 
 from django.conf import settings
+from django.contrib.auth import authenticate, login, logout
+from django.core.cache import cache
 from django.http import Http404, JsonResponse
-from django.utils import timezone
 from django.middleware.csrf import get_token
+from django.utils import timezone
 
 from . import agenda, dados
 from .dados import Recusado
 from .models import Agendamento, Ausencia, Bloqueio, Expediente, Produto, Profissional, Servico
 
+TENTATIVAS_DE_LOGIN = 5
+ESPERA_DO_LOGIN = 15 * 60  # segundos
 
-def api(**metodos):
+
+def profissional_do(usuario):
+    """O cadastro de barbeiro ligado ao usuário, se houver e estiver ativo."""
+    profissional = getattr(usuario, "profissional", None) if usuario.is_authenticated else None
+    return profissional if profissional and profissional.ativo else None
+
+
+def tem_acesso(usuario):
+    """Barbeiro ativo ou o administrador do sistema (o João, para dar suporte)."""
+    return usuario.is_authenticated and (usuario.is_superuser or profissional_do(usuario) is not None)
+
+
+def ve_valor(request, profissional_id):
+    return request.user.is_superuser or getattr(profissional_do(request.user), "id", None) == profissional_id
+
+
+def api(aberta=False, **metodos):
     """Monta uma rota que aceita os métodos HTTP informados (GET=funcao, POST=funcao...).
 
     Cada função recebe o request, o corpo JSON (dict) e os parâmetros da URL, e devolve um dict.
-    Recusado vira { ok: false, erro } com status 400.
+    Recusado vira { ok: false, erro } com status 400. Sem aberta=True, exige login.
     """
     def rota(request, **parametros):
+        if request.method == "GET":
+            get_token(request)  # entrega o cookie de CSRF, que os POST precisam mandar de volta
         funcao = metodos.get(request.method)
         if not funcao:
             return JsonResponse({"ok": False, "erro": "Método não permitido."}, status=405)
+        if not aberta and not request.user.is_authenticated:
+            return JsonResponse({"ok": False, "erro": "Entre com seu usuário e senha."}, status=401)
+        if not aberta and not tem_acesso(request.user):
+            return JsonResponse({"ok": False, "erro": "Este usuário não tem acesso ao painel."}, status=403)
         corpo = {}
         if request.body:
             try:
@@ -86,7 +113,7 @@ def produto_json(produto):
             "foto": produto.foto.url if produto.foto else None}
 
 
-def agendamento_json(agendamento):
+def agendamento_json(agendamento, ver_valor=True):
     return {
         "id": agendamento.id,
         "cliente": {"nome": agendamento.cliente_nome, "telefone": agendamento.cliente_telefone},
@@ -95,7 +122,7 @@ def agendamento_json(agendamento):
         "data": agendamento.data.isoformat(),
         "inicio": hora_texto(agendamento.inicio),
         "duracao": agendamento.duracao,
-        "preco": valor(agendamento.preco),
+        "preco": valor(agendamento.preco) if ver_valor else None,
         "repeticao": {"frequencia": agendamento.frequencia, "vezes": agendamento.vezes},
         "excecoes": [excecao.data.isoformat() for excecao in agendamento.excecoes.all()],
         "ate": agendamento.ate.isoformat() if agendamento.ate else None,
@@ -118,7 +145,6 @@ def expedientes_json():
 
 def _vitrine(request, corpo):
     """Tudo o que o /agendar e a /loja mostram."""
-    get_token(request)  # entrega o cookie de CSRF, que os POST precisam mandar de volta
     return {
         "profissionais": [profissional_json(item) for item in Profissional.objects.filter(ativo=True)],
         "servicos": [servico_json(item) for item in Servico.objects.filter(removido=False)],
@@ -161,21 +187,63 @@ def _agendar(request, corpo):
     return {"agendamento": agendamento_json(agendamento)}
 
 
-vitrine = api(GET=_vitrine)
-horarios = api(GET=_horarios)
-agendar = api(POST=_agendar)
+vitrine = api(aberta=True, GET=_vitrine)
+horarios = api(aberta=True, GET=_horarios)
+agendar = api(aberta=True, POST=_agendar)
+
+
+# Painel: login
+
+def eu_json(usuario):
+    profissional = profissional_do(usuario)
+    return {
+        "usuario": usuario.get_username(),
+        "nome": profissional.nome if profissional else (usuario.get_full_name() or usuario.get_username()),
+        "profissionalId": profissional.id if profissional else None,
+        "administrador": usuario.is_superuser,
+    }
+
+
+def _entrar(request, corpo):
+    nome = str(corpo.get("usuario") or "").strip()
+    chave = f"login:{nome.lower()}"
+    if cache.get(chave, 0) >= TENTATIVAS_DE_LOGIN:
+        raise Recusado("Muitas tentativas erradas. Espere 15 minutos e tente de novo.")
+    usuario = authenticate(request, username=nome, password=str(corpo.get("senha") or ""))
+    if not usuario:
+        cache.set(chave, cache.get(chave, 0) + 1, ESPERA_DO_LOGIN)
+        raise Recusado("Usuário ou senha incorretos.")
+    if not tem_acesso(usuario):
+        raise Recusado("Este usuário não tem acesso ao painel.")
+    cache.delete(chave)
+    login(request, usuario)
+    return {"eu": eu_json(usuario)}
+
+
+def _sair(request, corpo):
+    logout(request)
+
+
+def _eu(request, corpo):
+    """Quem está logado. Sem login, responde 401: é a deixa para o painel mostrar a tela de entrar."""
+    return {"eu": eu_json(request.user)}
+
+
+entrar = api(aberta=True, POST=_entrar)
+sair = api(aberta=True, POST=_sair)
+eu = api(GET=_eu)
 
 
 # Painel
 
 def _estado(request, corpo):
     """O estado inteiro, no mesmo formato que o dados.js monta hoje no localStorage."""
-    get_token(request)
     agendamentos = Agendamento.objects.prefetch_related("servicos", "excecoes")
     return {
         "hoje": timezone.localdate().isoformat(),
         "profissionais": [profissional_json(item) for item in Profissional.objects.filter(ativo=True)],
-        "agendamentos": [agendamento_json(item) for item in agendamentos],
+        "eu": eu_json(request.user),
+        "agendamentos": [agendamento_json(item, ve_valor(request, item.profissional_id)) for item in agendamentos],
         "ausencias": [
             {"id": item.id, "profissionalId": item.profissional_id, "inicio": item.inicio.isoformat(),
              "fim": item.fim.isoformat(), "horaInicio": hora_texto(item.hora_inicio), "horaFim": hora_texto(item.hora_fim)}
@@ -198,7 +266,8 @@ def _novo_atendimento(request, corpo):
         profissional_id=corpo.get("profissionalId"), data=corpo.get("data"), inicio=corpo.get("inicio"),
         repeticao=corpo.get("repeticao"), origem="painel",
     )
-    return {"agendamento": agendamento_json(agendamento), "datas": [data.isoformat() for data in datas]}
+    return {"agendamento": agendamento_json(agendamento, ve_valor(request, agendamento.profissional_id)),
+            "datas": [data.isoformat() for data in datas]}
 
 
 def _cancelar_data(request, corpo, id):
@@ -207,7 +276,8 @@ def _cancelar_data(request, corpo, id):
 
 def _tornar_recorrente(request, corpo, id):
     agendamento, datas = dados.tornar_recorrente(id, corpo.get("repeticao"))
-    return {"agendamento": agendamento_json(agendamento), "datas": [data.isoformat() for data in datas]}
+    return {"agendamento": agendamento_json(agendamento, ve_valor(request, agendamento.profissional_id)),
+            "datas": [data.isoformat() for data in datas]}
 
 
 def _encerrar_repeticao(request, corpo, id):

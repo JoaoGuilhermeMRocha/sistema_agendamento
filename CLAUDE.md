@@ -26,7 +26,7 @@ No computador (`DJANGO_DEBUG=1`), o Django entrega as páginas e qualquer arquiv
 
 - `/agendar` e `/loja` são públicas e linkam uma para a outra.
 - `/barbeiros` é a área administrativa. Ela linka para as páginas públicas, mas **nenhuma página pública pode linkar para o painel**. O painel tem `noindex` (meta e cabeçalho `X-Robots-Tag`).
-- Ainda **não há login**. Ele entra junto com o backend.
+- **Login**: a API do painel (`/api/painel/`) exige login (usuário do Django ligado ao barbeiro em `Profissional.usuario`, criado pelo admin). A tela de entrar no `/barbeiros` entra na etapa 6, junto com o front ligado à API. **Todos os barbeiros podem alterar tudo** (decisão do João); a única restrição é o valor (veja Pendências).
 
 ## Arquivos
 
@@ -55,7 +55,7 @@ Backend, na raiz:
 | `barbearia/` | O app: `models.py` (tabelas, com `CheckConstraint` garantindo as regras no banco), `admin.py` e `views.py` |
 | `barbearia/agenda.py` | **As regras da agenda em Python** (tradução do `agenda.js`), em funções puras sobre um `Estado` montado por `carregar_estado()`. É o servidor que decide; o `agenda.js` só desenha o painel. **Mudou uma regra num, mude no outro** |
 | `barbearia/dados.py` | **Validação e gravação** (o equivalente do `web/dados.js` no servidor, com as mesmas mensagens). Recusa com `Recusado("mensagem")`. Marcar horário trava as linhas dos profissionais (`select_for_update`) antes de conferir a agenda: é a trava contra reserva dupla. `{ simular }` aplica a mudança numa transação, devolve os conflitos novos e desfaz |
-| `barbearia/api.py`, `barbearia/urls.py` | **API JSON** em `/api/`. Respostas no formato do `dados.js` (`{ ok: true, ... }` ou `{ ok: false, erro }` com status 400) e campos em camelCase como no front. `/api/publico/` (vitrine, horários e agendar) nunca devolve dado de outros clientes. `/api/painel/` devolve o estado inteiro e recebe as alterações. `painel/exemplo` e `painel/dados-de-teste` só existem com `DJANGO_DEBUG=1`. Os POST, PUT e DELETE precisam do cabeçalho `X-CSRFToken` (cookie `csrftoken`, entregue pela vitrine e pelo estado) |
+| `barbearia/api.py`, `barbearia/urls.py` | **API JSON** em `/api/`. Respostas no formato do `dados.js` (`{ ok: true, ... }` ou `{ ok: false, erro }` com status 400) e campos em camelCase como no front. `/api/publico/` (vitrine, horários e agendar) nunca devolve dado de outros clientes. `/api/painel/` devolve o estado inteiro e recebe as alterações. `painel/exemplo` e `painel/dados-de-teste` só existem com `DJANGO_DEBUG=1`. Login por `painel/entrar` e `painel/sair`. `painel/eu` diz quem está logado (401 sem login). Sem login, o painel responde 401; usuário sem barbeiro ativo, 403. 5 senhas erradas seguidas bloqueiam o usuário por 15 minutos. No estado, o `preco` dos atendimentos dos colegas vem `null`; o superusuário (o João, no suporte) vê tudo. Os POST, PUT e DELETE precisam do cabeçalho `X-CSRFToken` (cookie `csrftoken`, entregue pela vitrine e pelo estado) |
 | `barbearia/tests/` | Testes automáticos (`uv run python manage.py test barbearia`). O "agora" dos testes é fixo (segunda, 02/11/2026, 10h) |
 | `clientes/<slug>/dados_iniciais.json` | Dados iniciais de cada barbearia (profissionais, expedientes, serviços e produtos), carregados com `manage.py loaddata` |
 | `pyproject.toml`, `uv.lock`, `.python-version` | Dependências e versão do Python, gerenciadas pelo `uv` |
@@ -156,7 +156,7 @@ As regras da agenda em Python têm testes automáticos: `uv run python manage.py
 ## Pendências (fora do protótipo)
 
 - Backend com PostgreSQL substituindo `dados.js` por chamadas de API, com validação no servidor, trava contra reserva dupla no banco e fuso horário da barbearia (hoje usa o do navegador).
-- Login no painel, com acesso por barbeiro. Junto com ele entra o pedido do Santiago: **cada barbeiro vê só os próprios valores**, e isso vale para ele também, que é o dono. Na agenda, os atendimentos dos outros continuam visíveis, mas sem valor (bloco, detalhe, cabeçalhos e lista). Nos relatórios, o barbeiro vê só os próprios dados: o relatório fica travado nele, sem o filtro e sem o agrupamento por profissional.
+- Pedido do Santiago: **cada barbeiro vê só os próprios valores**, e isso vale para ele também, que é o dono. O servidor já esconde o valor (etapa 5); falta o front respeitar (etapa 6). Na agenda, os atendimentos dos outros continuam visíveis, mas sem valor (bloco, detalhe, cabeçalhos e lista). Nos relatórios, o barbeiro vê só os próprios dados: o relatório fica travado nele, sem o filtro e sem o agrupamento por profissional.
 - Armazenamento real das fotos (hoje são data URLs no `localStorage`).
 - Cliente consultar e desmarcar o próprio horário. Lembrete automático no WhatsApp (hoje é um toque, via link `wa.me`).
 - LGPD: hoje há só uma linha de aviso no formulário. Falta política de privacidade e consentimento.

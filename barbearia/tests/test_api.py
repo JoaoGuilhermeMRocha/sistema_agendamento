@@ -8,12 +8,14 @@ import threading
 from datetime import timedelta
 
 from django.conf import settings
+from django.contrib.auth.models import User
+from django.core.cache import cache
 from django.db import connection
 from django.test import TestCase, TransactionTestCase
 from django.utils import timezone
 
 from barbearia import dados
-from barbearia.models import Agendamento, Excecao, Servico
+from barbearia.models import Agendamento, Excecao, Profissional, Servico
 
 DADOS_INICIAIS = str(settings.BASE_DIR / "clientes" / "santiago" / "dados_iniciais.json")
 CABELO, BARBA, SOBRANCELHA = "1", "2", "3"
@@ -29,6 +31,14 @@ def proxima(dia_semana):
 
 class ApiTestCase(TestCase):
     fixtures = [DADOS_INICIAIS]
+
+    def setUp(self):
+        cache.clear()  # zera as tentativas de login entre um teste e outro
+
+    def barbeiro(self, profissional, senha="uma-senha-boa-123"):
+        usuario = User.objects.create_user(profissional, password=senha)
+        Profissional.objects.filter(pk=profissional).update(usuario=usuario)
+        return usuario
 
     def chamar(self, metodo, url, corpo=None):
         resposta = getattr(self.client, metodo)(url, json.dumps(corpo) if corpo is not None else "",
@@ -121,6 +131,10 @@ class PublicoTests(ApiTestCase):
 
 
 class PainelTests(ApiTestCase):
+    def setUp(self):
+        super().setUp()
+        self.client.force_login(self.barbeiro("santiago"))
+
     def novo(self, **campos):
         corpo = {"nome": "Ana", "telefone": "43999998888", "servicos": [CABELO], "profissionalId": "santiago",
                  "data": proxima(2).isoformat(), "inicio": "10:00", **campos}
@@ -129,7 +143,7 @@ class PainelTests(ApiTestCase):
     def test_estado_no_formato_do_front(self):
         self.novo()
         _, estado = self.chamar("get", "/api/painel/estado")
-        self.assertEqual(set(estado), {"ok", "hoje", "profissionais", "agendamentos", "ausencias", "bloqueios",
+        self.assertEqual(set(estado), {"ok", "hoje", "eu", "profissionais", "agendamentos", "ausencias", "bloqueios",
                                        "expedientes", "servicos", "produtos"})
         self.assertEqual(estado["expedientes"]["santiago"]["2"],
                          {"inicio": "09:00", "fim": "18:00", "pausaInicio": "12:00", "pausaFim": "13:00"})
@@ -221,6 +235,69 @@ class PainelTests(ApiTestCase):
         self.chamar("delete", f"/api/painel/produtos/{id}")
         _, resposta = self.chamar("get", "/api/publico/vitrine")
         self.assertEqual(len(resposta["produtos"]), 2)
+
+
+class AcessoTests(ApiTestCase):
+    def test_painel_exige_login_e_o_publico_nao(self):
+        status, resposta = self.chamar("get", "/api/painel/estado")
+        self.assertEqual((status, resposta["erro"]), (401, "Entre com seu usuário e senha."))
+        self.assertEqual(self.chamar("post", "/api/painel/servicos", {"nome": "X"})[0], 401)
+        self.assertEqual(self.chamar("get", "/api/publico/vitrine")[0], 200)
+
+    def test_entrar_e_sair(self):
+        self.barbeiro("damigo", senha="tesoura-afiada-77")
+        status, resposta = self.chamar("post", "/api/painel/entrar", {"usuario": "damigo", "senha": "tesoura-afiada-77"})
+        self.assertEqual(status, 200)
+        self.assertEqual(resposta["eu"], {"usuario": "damigo", "nome": "Damigo", "profissionalId": "damigo",
+                                          "administrador": False})
+        self.assertEqual(self.chamar("get", "/api/painel/eu")[0], 200)
+
+        self.chamar("post", "/api/painel/sair")
+        self.assertEqual(self.chamar("get", "/api/painel/eu")[0], 401)
+
+    def test_senha_errada_e_bloqueio_depois_de_5_tentativas(self):
+        self.barbeiro("damigo", senha="tesoura-afiada-77")
+        for _ in range(5):
+            _, resposta = self.chamar("post", "/api/painel/entrar", {"usuario": "damigo", "senha": "chute"})
+            self.assertEqual(resposta["erro"], "Usuário ou senha incorretos.")
+        # Na 6ª, nem a senha certa entra.
+        _, resposta = self.chamar("post", "/api/painel/entrar", {"usuario": "damigo", "senha": "tesoura-afiada-77"})
+        self.assertEqual(resposta["erro"], "Muitas tentativas erradas. Espere 15 minutos e tente de novo.")
+
+    def test_usuario_sem_cadastro_de_barbeiro_nao_entra(self):
+        usuario = User.objects.create_user("curioso", password="uma-senha-boa-123")
+        _, resposta = self.chamar("post", "/api/painel/entrar", {"usuario": "curioso", "senha": "uma-senha-boa-123"})
+        self.assertEqual(resposta["erro"], "Este usuário não tem acesso ao painel.")
+        self.client.force_login(usuario)
+        self.assertEqual(self.chamar("get", "/api/painel/estado")[0], 403)
+
+    def test_barbeiro_desativado_perde_o_acesso(self):
+        self.client.force_login(self.barbeiro("damigo"))
+        Profissional.objects.filter(pk="damigo").update(ativo=False)
+        self.assertEqual(self.chamar("get", "/api/painel/estado")[0], 403)
+
+    def test_cada_um_ve_so_os_proprios_valores(self):
+        self.agendar(profissionalId="santiago", servicos=[CABELO])
+        self.agendar(profissionalId="damigo", servicos=[BARBA])
+
+        self.client.force_login(self.barbeiro("santiago"))
+        _, estado = self.chamar("get", "/api/painel/estado")
+        precos = {item["profissionalId"]: item["preco"] for item in estado["agendamentos"]}
+        self.assertEqual(precos, {"santiago": 30.0, "damigo": None})
+        self.assertEqual(estado["eu"]["profissionalId"], "santiago")
+
+        # O administrador do sistema (o João, no suporte) vê tudo.
+        self.client.force_login(User.objects.create_superuser("joao", password="uma-senha-boa-123"))
+        _, estado = self.chamar("get", "/api/painel/estado")
+        precos = {item["profissionalId"]: item["preco"] for item in estado["agendamentos"]}
+        self.assertEqual(precos, {"santiago": 30.0, "damigo": 25.0})
+
+    def test_marcar_para_o_colega_nao_mostra_o_valor(self):
+        self.client.force_login(self.barbeiro("santiago"))
+        _, resposta = self.chamar("post", "/api/painel/agendamentos", {
+            "nome": "Ana", "telefone": "43999998888", "servicos": [CABELO], "profissionalId": "damigo",
+            "data": proxima(2).isoformat(), "inicio": "10:00"})
+        self.assertIsNone(resposta["agendamento"]["preco"])
 
 
 class ReservaDuplaTests(TransactionTestCase):
