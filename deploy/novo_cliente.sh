@@ -21,6 +21,8 @@ useradd --system --home-dir "$CASA" --create-home --shell /usr/sbin/nologin "$SL
 chmod 750 "$CASA"
 # O Caddy entra no grupo para ler web/ e midia/ e falar com o socket do Gunicorn.
 usermod -aG "$SLUG" caddy
+# O grupo arsystems lê a chave do backup fora da VPS (/etc/arsystems/rclone.conf), se já existir.
+getent group arsystems >/dev/null && usermod -aG arsystems "$SLUG"
 
 echo "2/7 Código e dependências."
 como git clone --quiet "$REPOSITORIO" "$CODIGO"

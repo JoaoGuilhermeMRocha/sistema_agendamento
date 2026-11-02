@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Backup de uma barbearia: banco (pg_dump) e fotos (midia/). Guarda os últimos 14 dias na VPS.
 # Roda todo dia pelo backup@<slug>.timer, como o usuário da barbearia.
-# Com /etc/arsystems/rclone.conf configurado (remoto "fora"), manda uma cópia para fora da VPS.
+# Com /etc/arsystems/rclone.conf configurado (remoto "fora", legível pelo grupo arsystems),
+# manda uma cópia para fora da VPS (Cloudflare R2). O R2 apaga sozinho o que passar de 90 dias.
 set -euo pipefail
 SLUG="${1:?Informe o slug}"
 CASA="/srv/clientes/$SLUG"

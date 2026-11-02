@@ -184,7 +184,9 @@ internet → Caddy (HTTPS automático, /etc/caddy/clientes/<slug>.caddy)
 - `/srv/arsystems`: cópia do repositório só com os scripts (é de onde se roda o `deploy/`).
 - `/srv/clientes/<slug>/`: casa do usuário de sistema `<slug>` (sem login), com `codigo/` (outro clone, com o `.env` de produção, só leitura para o usuário), `midia/` e `backups/`. O Caddy está no grupo `<slug>` para ler os arquivos e o socket (o Gunicorn roda com `umask 007`).
 - Banco `<slug>`, com papel `<slug>` e **sem senha**: o Django entra pelo socket do Postgres e o Postgres confere o usuário do sistema (peer).
-- Tarefas: `backup@<slug>.timer` (3h: `pg_dump` + `midia/`, guarda 14 dias; cópia para fora da VPS se existir `/etc/arsystems/rclone.conf`) e `manutencao@<slug>.timer` (4h: `anonimizar_antigos` e `clearsessions`).
+- Tarefas: `backup@<slug>.timer` (3h: `pg_dump` + `midia/`, guarda 14 dias na VPS) e `manutencao@<slug>.timer` (4h: `anonimizar_antigos` e `clearsessions`).
+- **Backup fora da VPS**: Cloudflare R2, bucket `arsystems-backups` (uma pasta por slug), com regra que apaga o que passar de 90 dias. A chave fica em `/etc/arsystems/rclone.conf` (remoto `fora`, dono `root:arsystems`, `640`); cada usuário de barbearia está no grupo `arsystems` (o `novo_cliente.sh` já põe).
+- **Monitoramento**: UptimeRobot testa `/api/publico/vitrine` a cada 5 minutos (passa pelo Caddy, pelo Django e pelo Postgres) e avisa o João se cair.
 - Logs: `journalctl -u agenda@<slug>` (o `LOGGING` manda os erros do Django para a saída padrão).
 
 Comandos, sempre com `sudo` na VPS:
@@ -195,6 +197,8 @@ Comandos, sempre com `sudo` na VPS:
 | Barbearia nova | criar `clientes/<slug>/` no repositório, dar push e `sudo /srv/arsystems/deploy/novo_cliente.sh <slug> <slug>.arsystems.com.br` |
 | Comando do Django | `sudo /srv/arsystems/deploy/manage.sh santiago <comando>` (ex.: `createsuperuser`) |
 | Backup agora | `sudo systemctl start backup@santiago` |
+| Ver o que está no R2 | `sudo rclone --config /etc/arsystems/rclone.conf ls fora:arsystems-backups/santiago` |
+| Restaurar o banco | parar o site (`sudo systemctl stop agenda@santiago`), copiar o `.dump` para `/tmp` com dono `postgres`, `sudo -u postgres pg_restore --clean --if-exists --no-owner --role=santiago -d santiago /tmp/banco.dump` e ligar de novo. Fotos: `tar -xzf midia-AAAA-MM-DD.tar.gz -C /srv/clientes/santiago` |
 
 Em produção (`DJANGO_DEBUG` vazio), o `settings.py` liga HTTPS obrigatório, cookies seguros, HSTS e `CSRF_TRUSTED_ORIGINS` a partir de `DJANGO_HOSTS`. O cache fica no banco (`createcachetable`) para as contagens valerem nos dois processos do Gunicorn. O agendamento público aceita 10 por IP por hora (`AGENDAMENTOS_POR_IP`).
 
