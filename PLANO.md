@@ -17,8 +17,8 @@ Cada etapa termina funcionando e com um commit.
 1. [x] **Ambiente local:** Python 3.12 com `uv` (a mesma versão da VPS) e PostgreSQL 16 num container `podman`.
 2. [x] **Projeto Django e modelos:** agendamentos, serviços, produtos, expedientes, ausências e bloqueios viram tabelas. Os profissionais saem do `config.js` para o banco. O admin do Django fica disponível para o João.
 3. [x] **Regras da agenda em Python:** disponibilidade, recorrência e conflitos (tradução do `agenda.js`), com testes automáticos.
-4. [ ] **API:** rotas JSON que o site chama, com validação no servidor e trava contra reserva dupla no banco.
+4. [x] **API:** rotas JSON que o site chama, com validação no servidor e trava contra reserva dupla no banco.
 5. [ ] **Login no painel:** uma conta por barbeiro. Cada um vê só os próprios valores, inclusive o Santiago (ver Pendências no `CLAUDE.md`).
 6. [ ] **Front ligado à API:** o `dados.js` passa a usar `fetch` e as chamadas viram assíncronas. O `/agendar` usa a rota de horários livres. "Gerar dados de exemplo" e "Apagar dados de teste" ficam só no ambiente de desenvolvimento.
 7. [ ] **Fotos e LGPD:** fotos salvas como arquivo no servidor (não mais data URL) e política de privacidade com consentimento.
-8. [ ] **Deploy:** PostgreSQL, Gunicorn e Caddy na VPS, backup diário do banco fora do servidor e um script para criar um cliente novo.
+8. [ ] **Deploy:** PostgreSQL, Gunicorn e Caddy na VPS, backup diário do banco fora do servidor e um script para criar um cliente novo. Limite de pedidos por IP no agendamento público, contra robô marcando horário falso.

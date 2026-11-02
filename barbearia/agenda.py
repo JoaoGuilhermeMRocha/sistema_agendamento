@@ -83,6 +83,9 @@ class Estado:
     bloqueios: list[Bloqueio] = field(default_factory=list)
     ausencias: list[Ausencia] = field(default_factory=list)
     atendimentos: list[Atendimento] = field(default_factory=list)
+    # Atendimentos de cada dia, calculados uma vez só (a lista de horários pergunta o mesmo dia muitas vezes).
+    # Mexeu em `atendimentos` depois de consultar? Limpe com _por_dia.clear().
+    _por_dia: dict = field(default_factory=dict, repr=False)
 
     @property
     def hoje(self):
@@ -212,7 +215,10 @@ def ocorre_em(atendimento, data):
 
 
 def atendimentos_do_dia(estado, data):
-    return sorted((item for item in estado.atendimentos if ocorre_em(item, data)), key=lambda item: item.inicio)
+    if data not in estado._por_dia:
+        estado._por_dia[data] = sorted(
+            (item for item in estado.atendimentos if ocorre_em(item, data)), key=lambda item: item.inicio)
+    return estado._por_dia[data]
 
 
 # Disponibilidade
@@ -268,9 +274,9 @@ def profissional_livre(estado, profissional, data, inicio, duracao, ignorar_id=N
         return False
     fim = inicio + duracao
     return not any(
-        item.id != ignorar_id and item.profissional == profissional and ocorre_em(item, data)
+        item.id != ignorar_id and item.profissional == profissional
         and sobrepoe(inicio, fim, item.inicio, item.inicio + item.duracao)
-        for item in estado.atendimentos
+        for item in atendimentos_do_dia(estado, data)
     )
 
 
