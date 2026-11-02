@@ -25,6 +25,16 @@ from .models import Agendamento, Ausencia, Bloqueio, Expediente, Produto, Profis
 
 TENTATIVAS_DE_LOGIN = 5
 ESPERA_DO_LOGIN = 15 * 60  # segundos
+# Contra robô lotando a agenda com horário falso. Uma família marcando junta cabe com folga.
+AGENDAMENTOS_POR_IP = 10
+JANELA_DE_AGENDAMENTOS = 60 * 60  # segundos
+
+
+def ip_do_cliente(request):
+    """Na VPS, o Caddy põe o IP de quem acessa no X-Forwarded-For (e descarta o que o próprio
+    cliente mandar nesse cabeçalho). No computador, vale o REMOTE_ADDR."""
+    encaminhado = request.META.get("HTTP_X_FORWARDED_FOR", "")
+    return encaminhado.split(",")[-1].strip() or request.META.get("REMOTE_ADDR", "")
 
 
 def profissional_do(usuario):
@@ -184,11 +194,17 @@ def _horarios(request, corpo):
 
 
 def _agendar(request, corpo):
+    chave = f"agendamentos:{ip_do_cliente(request)}"
+    feitos = cache.get(chave, 0)
+    if feitos >= AGENDAMENTOS_POR_IP:
+        raise Recusado("Muitos agendamentos seguidos deste aparelho. Espere um pouco ou fale com a barbearia pelo WhatsApp.")
     agendamento, _ = dados.criar_agendamento(
         nome=corpo.get("nome"), telefone=corpo.get("telefone"), servicos=corpo.get("servicos"),
         profissional_id=corpo.get("profissionalId"), data=corpo.get("data"), inicio=corpo.get("inicio"),
         origem="cliente",
     )
+    # Só conta o que deu certo: quem errou o telefone três vezes não fica bloqueado.
+    cache.set(chave, feitos + 1, JANELA_DE_AGENDAMENTOS)
     return {"agendamento": agendamento_json(agendamento)}
 
 

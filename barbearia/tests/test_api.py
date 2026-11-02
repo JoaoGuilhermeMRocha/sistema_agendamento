@@ -129,6 +129,24 @@ class PublicoTests(ApiTestCase):
                 self.assertEqual((status, resposta["erro"]), (400, erro))
         self.assertEqual(Agendamento.objects.count(), 0)
 
+    def test_limite_de_agendamentos_por_ip(self):
+        terca = proxima(2)
+        for indice in range(10):
+            hora = f"{9 + indice // 2:02d}:{30 * (indice % 2):02d}"
+            if hora >= "12:00":
+                hora = f"{int(hora[:2]) + 1:02d}:{hora[3:]}"  # pula a pausa do almoço
+            status, resposta = self.agendar(nome=f"Cliente {indice}", inicio=hora, data=terca.isoformat())
+            self.assertEqual(status, 200, resposta)
+        _, resposta = self.agendar(inicio="16:00", data=terca.isoformat())
+        self.assertEqual(resposta["erro"], "Muitos agendamentos seguidos deste aparelho. "
+                                           "Espere um pouco ou fale com a barbearia pelo WhatsApp.")
+        # Outro IP (o Caddy informa no X-Forwarded-For) continua marcando.
+        resposta = self.client.post("/api/publico/agendamentos", json.dumps({
+            "nome": "Outra pessoa", "telefone": "43988887777", "servicos": [CABELO],
+            "data": terca.isoformat(), "inicio": "16:00"}), content_type="application/json",
+            HTTP_X_FORWARDED_FOR="200.200.200.200")
+        self.assertEqual(resposta.status_code, 200)
+
     def test_pedido_que_nao_e_json(self):
         resposta = self.client.post("/api/publico/agendamentos", "isso não é json", content_type="application/json")
         self.assertEqual(resposta.status_code, 400)

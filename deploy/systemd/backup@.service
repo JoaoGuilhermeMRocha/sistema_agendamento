@@ -1,0 +1,9 @@
+# Backup diário de uma barbearia (deploy/backup.sh).
+[Unit]
+Description=Backup do agendamento %i
+After=postgresql.service
+
+[Service]
+Type=oneshot
+User=%i
+ExecStart=/srv/clientes/%i/codigo/deploy/backup.sh %i

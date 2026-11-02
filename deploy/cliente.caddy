@@ -1,0 +1,42 @@
+# {{SLUG}}: gerado pelo deploy/novo_cliente.sh a partir de deploy/cliente.caddy.
+{{DOMINIO}} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	redir / /agendar
+
+	# API e admin: o Django, pelo socket do Gunicorn.
+	@django path /api/* /admin /admin/*
+	handle @django {
+		reverse_proxy unix//run/agenda-{{SLUG}}/gunicorn.sock
+	}
+
+	# Arquivos do admin do Django (collectstatic).
+	handle_path /static/* {
+		root * /srv/clientes/{{SLUG}}/codigo/static
+		file_server
+	}
+
+	# Fotos enviadas pelo painel. O nome não muda quando a foto é trocada: o navegador sempre confere.
+	handle_path /midia/* {
+		root * /srv/clientes/{{SLUG}}/midia
+		header Cache-Control "no-cache"
+		file_server
+	}
+
+	# O site: /agendar entrega agendar.html, e assim por diante.
+	handle {
+		root * /srv/clientes/{{SLUG}}/codigo/web
+		# Sem build, os arquivos não mudam de nome a cada versão: o navegador sempre confere se há uma nova.
+		header Cache-Control "no-cache"
+		header /barbeiros X-Robots-Tag "noindex, nofollow"
+		try_files {path}.html {path}
+		file_server
+	}
+}

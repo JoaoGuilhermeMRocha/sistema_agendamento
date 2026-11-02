@@ -19,6 +19,8 @@ uv run python manage.py runserver
 - `http://127.0.0.1:8000/privacidade`: política de privacidade (pública)
 - `http://127.0.0.1:8000/admin/`: admin do Django (só do João)
 
+Em produção: `https://santiago.arsystems.com.br` (veja **No ar**, mais abaixo).
+
 O front é HTML, CSS e JavaScript puro, com módulos ES, sem build, e fica em `web/`. O backend é Python 3.12 (preso pelo `uv`, igual à VPS) com Django e PostgreSQL. Senhas e banco vêm do `.env` (modelo em `.env.exemplo`), que nunca vai para o Git.
 
 No computador (`DJANGO_DEBUG=1`), o Django entrega as páginas e qualquer arquivo de `web/` com extensão, inclusive os de `web/imagens/`. Na VPS, quem entrega `web/` é o Caddy.
@@ -61,6 +63,7 @@ Backend, na raiz:
 | `barbearia/tests/` | Testes automáticos (`uv run python manage.py test barbearia`). O "agora" dos testes é fixo (segunda, 02/11/2026, 10h) |
 | `clientes/<slug>/dados_iniciais.json` | Dados iniciais de cada barbearia (profissionais, expedientes, serviços e produtos), carregados com `manage.py loaddata` |
 | `pyproject.toml`, `uv.lock`, `.python-version` | Dependências e versão do Python, gerenciadas pelo `uv` |
+| `deploy/` | Scripts da VPS (veja **No ar**): `preparar_servidor.sh`, `novo_cliente.sh`, `atualizar.sh`, `manage.sh`, `backup.sh`, o modelo do site no Caddy (`cliente.caddy`) e os modelos do systemd (`systemd/*@.service` e `*@.timer`, em que `%i` é o slug) |
 
 As páginas preenchem nome, endereço e contatos a partir do `config.js` (`data-marca="chave"`, `data-link="whatsapp|instagram|mapa"`). O endereço abre o Google Maps: usa `config.mapa` se preenchido, senão busca pelo endereço. O texto escrito no HTML é só um valor provisório.
 
@@ -167,6 +170,33 @@ Datas são strings `AAAA-MM-DD` e horas são `HH:MM`. Telefones são guardados s
 - **Backend**: `uv run python manage.py test barbearia` (regras, API, login, fotos e a reserva dupla com dois pedidos simultâneos). Precisa do container do Postgres ligado.
 - **Front**: sem testes automáticos no projeto. Na etapa 6 o teste foi feito com o Brave (Flatpak) em headless (`flatpak run com.brave.Browser --headless=new --remote-debugging-port=9222`) e o Playwright ligado nele por CDP (`uv run --with playwright`), contra um **segundo servidor na porta 8001 com um banco de rascunho** (`POSTGRES_DB=rascunho`, que tem prioridade sobre o `.env`), para não mexer nos dados do João. Em 360, 390 e 1280px, conferindo erros de console (o 401 de antes do login e o 400 de senha errada são esperados).
 - "Gerar dados de exemplo" troca os atendimentos por uma base de agosto a outubro, com a semana atual lotada (bom para testar agenda e relatórios). "Apagar dados de teste" apaga atendimentos, ausências e bloqueios. Os dois só aparecem com `DJANGO_DEBUG=1`.
+
+## No ar (VPS)
+
+Hostinger, Ubuntu 24.04, IP `187.41.112.224`, no Brasil. Acesso só por chave SSH, com o usuário `joao` (o root não entra). Firewall com 22, 80 e 443, fail2ban e atualizações de segurança automáticas. O domínio `arsystems.com.br` tem o DNS na Cloudflare, com um registro A curinga (`*`) apontando para a VPS, **só DNS** (nuvem cinza: o Caddy precisa ver o IP real para o limite por IP e para tirar o certificado).
+
+```
+internet → Caddy (HTTPS automático, /etc/caddy/clientes/<slug>.caddy)
+             ├── web/  e  midia/            arquivos, direto do disco
+             └── /api/  e  /admin/          → Gunicorn (agenda@<slug>, socket em /run/agenda-<slug>/) → Django → PostgreSQL
+```
+
+- `/srv/arsystems`: cópia do repositório só com os scripts (é de onde se roda o `deploy/`).
+- `/srv/clientes/<slug>/`: casa do usuário de sistema `<slug>` (sem login), com `codigo/` (outro clone, com o `.env` de produção, só leitura para o usuário), `midia/` e `backups/`. O Caddy está no grupo `<slug>` para ler os arquivos e o socket (o Gunicorn roda com `umask 007`).
+- Banco `<slug>`, com papel `<slug>` e **sem senha**: o Django entra pelo socket do Postgres e o Postgres confere o usuário do sistema (peer).
+- Tarefas: `backup@<slug>.timer` (3h: `pg_dump` + `midia/`, guarda 14 dias; cópia para fora da VPS se existir `/etc/arsystems/rclone.conf`) e `manutencao@<slug>.timer` (4h: `anonimizar_antigos` e `clearsessions`).
+- Logs: `journalctl -u agenda@<slug>` (o `LOGGING` manda os erros do Django para a saída padrão).
+
+Comandos, sempre com `sudo` na VPS:
+
+| Para | Comando |
+| --- | --- |
+| Pôr no ar o que está no GitHub (faz backup antes) | `sudo /srv/arsystems/deploy/atualizar.sh santiago` |
+| Barbearia nova | criar `clientes/<slug>/` no repositório, dar push e `sudo /srv/arsystems/deploy/novo_cliente.sh <slug> <slug>.arsystems.com.br` |
+| Comando do Django | `sudo /srv/arsystems/deploy/manage.sh santiago <comando>` (ex.: `createsuperuser`) |
+| Backup agora | `sudo systemctl start backup@santiago` |
+
+Em produção (`DJANGO_DEBUG` vazio), o `settings.py` liga HTTPS obrigatório, cookies seguros, HSTS e `CSRF_TRUSTED_ORIGINS` a partir de `DJANGO_HOSTS`. O cache fica no banco (`createcachetable`) para as contagens valerem nos dois processos do Gunicorn. O agendamento público aceita 10 por IP por hora (`AGENDAMENTOS_POR_IP`).
 
 ## Pendências (fora do protótipo)
 

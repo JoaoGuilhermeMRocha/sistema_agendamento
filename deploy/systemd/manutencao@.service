@@ -1,0 +1,11 @@
+# Manutenção diária de uma barbearia: LGPD (prazo de guarda) e sessões vencidas.
+[Unit]
+Description=Manutenção diária do agendamento %i
+After=postgresql.service
+
+[Service]
+Type=oneshot
+User=%i
+WorkingDirectory=/srv/clientes/%i/codigo
+ExecStart=/srv/clientes/%i/codigo/.venv/bin/python manage.py anonimizar_antigos
+ExecStart=/srv/clientes/%i/codigo/.venv/bin/python manage.py clearsessions

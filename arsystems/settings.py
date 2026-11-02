@@ -78,13 +78,18 @@ DATABASES = {
         "ENGINE": "django.db.backends.postgresql",
         "NAME": os.environ["POSTGRES_DB"],
         "USER": os.environ["POSTGRES_USER"],
-        "PASSWORD": os.environ["POSTGRES_PASSWORD"],
+        # Na VPS, o Django entra pelo socket do Postgres com o usuário do sistema (peer), sem senha.
+        "PASSWORD": os.environ.get("POSTGRES_PASSWORD", ""),
         "HOST": os.environ.get("POSTGRES_HOST", "127.0.0.1"),
         "PORT": os.environ.get("POSTGRES_PORT", "5432"),
     }
 }
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# Cache no banco, e não na memória: na VPS o Gunicorn roda com mais de um processo, e as contagens
+# (senhas erradas, agendamentos por IP) precisam valer para todos. Tabela: manage.py createcachetable.
+CACHES = {"default": {"BACKEND": "django.core.cache.backends.db.DatabaseCache", "LOCATION": "cache"}}
 
 
 AUTH_PASSWORD_VALIDATORS = [
@@ -129,8 +134,19 @@ MEDIA_URL = "/midia/"
 MEDIA_ROOT = Path(os.environ.get("DJANGO_MIDIA", BASE_DIR / "midia"))
 
 
-MAILERS = {
-    "default": {
-        "BACKEND": "django.core.mail.backends.console.EmailBackend",
-    },
+# Na VPS: o Caddy recebe o HTTPS e repassa avisando no X-Forwarded-Proto.
+if not DEBUG:
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    SECURE_SSL_REDIRECT = True
+    SECURE_HSTS_SECONDS = 365 * 24 * 60 * 60
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    CSRF_TRUSTED_ORIGINS = [f"https://{host}" for host in ALLOWED_HOSTS]
+
+# Erros vão para a saída padrão; na VPS, o systemd guarda (journalctl -u agenda@<slug>).
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {"console": {"class": "logging.StreamHandler"}},
+    "loggers": {"django": {"handlers": ["console"], "level": "WARNING"}},
 }
