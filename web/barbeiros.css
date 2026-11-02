@@ -844,6 +844,7 @@ fieldset.campo legend { margin-bottom: 8px; padding: 0; }
 .painel__testes { display: flex; flex-wrap: wrap; gap: 8px; }
 .painel__sessao { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .painel__sessao strong { color: var(--cor-texto); }
+.painel__rodape .rodape__credito { padding: 0; }
 
 /* Tela de entrar: ocupa o lugar das abas e do painel até o barbeiro entrar. */
 
