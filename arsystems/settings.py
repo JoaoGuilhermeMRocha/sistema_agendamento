@@ -95,6 +95,8 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 
+CSRF_FAILURE_VIEW = "barbearia.api.falha_de_csrf"
+
 # O barbeiro entra uma vez no celular e fica logado por 30 dias.
 SESSION_COOKIE_AGE = 30 * 24 * 60 * 60
 

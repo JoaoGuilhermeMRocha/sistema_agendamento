@@ -1,9 +1,9 @@
 // Tudo o que muda de uma barbearia para outra fica aqui (as cores e fontes ficam em tema.css).
-
-const diaUtil = { inicio: "09:00", fim: "18:00", pausaInicio: "12:00", pausaFim: "13:00" };
+// Profissionais, expedientes, serviços e produtos ficam no banco: os iniciais estão em
+// clientes/<slug>/dados_iniciais.json, e depois a barbearia mexe pelo painel.
 
 export const config = {
-  // Identificador curto e único; separa os dados salvos de cada barbearia.
+  // Identificador curto e único (o mesmo da pasta em clientes/). Vai no nome dos arquivos exportados.
   slug: "santiago",
   nome: "Santiago Barbearia",
   nomeCurto: "Santiago",
@@ -20,43 +20,20 @@ export const config = {
   // Usuário sem o @. Vazio esconde o link.
   instagram: "santiago_barbearia1",
 
-  // Serviços iniciais. Depois, a barbearia cadastra, edita e remove na aba Serviços do painel.
-  // icone: símbolo do serviço na agenda (veja ICONES_DE_SERVICO em dados.js).
-  servicosIniciais: [
-    { id: "cabelo", nome: "Cabelo", preco: 30, duracao: 30, icone: "tesoura" },
-    { id: "barba", nome: "Barba", preco: 25, duracao: 30, icone: "barba" },
-    { id: "sobrancelha", nome: "Sobrancelha", preco: 20, duracao: 15, icone: "sobrancelha" }
-  ],
-
-  // foto: retrato quadrado em imagens/ (vazio mostra a inicial). descricao: uma linha curta, opcional.
-  // Fotos e descrições abaixo são provisórias, até chegarem as do Santiago.
+  // Retrato de cada profissional enquanto não houver uma foto enviada pelo painel (vazio mostra a inicial).
+  // O nome, a descrição e a ordem vêm do servidor, que substitui esta lista ao carregar a página.
+  // As silhuetas são provisórias, até chegarem as fotos do Santiago.
   profissionais: [
-    { id: "santiago", nome: "Santiago", foto: "/imagens/santiago.svg", descricao: "Fundador da casa" },
-    { id: "damigo", nome: "Damigo", foto: "/imagens/damigo.svg", descricao: "Barbeiro" }
+    { id: "santiago", foto: "/imagens/santiago.svg" },
+    { id: "damigo", foto: "/imagens/damigo.svg" }
   ],
 
-  // Expediente inicial de cada profissional (0 = domingo, null = folga).
-  // Depois, cada barbeiro ajusta o seu no painel.
-  expedientePadrao: {
-    0: null,
-    1: null,
-    2: diaUtil,
-    3: diaUtil,
-    4: diaUtil,
-    5: diaUtil,
-    6: { inicio: "09:00", fim: "16:00", pausaInicio: "", pausaFim: "" }
-  },
-
+  // Os mesmos de AGENDA em arsystems/settings.py: mudou um, mude o outro.
   agenda: {
     intervaloMinutos: 15,
     diasParaAgendar: 14,
     // Até onde conferir conflitos de uma repetição sem data para terminar.
     horizonteRecorrenciaDias: 180,
     maxAtendimentosRepetidos: 52
-  },
-
-  produtosIniciais: [
-    { nome: "Pomada modeladora", preco: 35, descricao: "Fixação média e acabamento seco, sem brilho.", foto: null },
-    { nome: "Óleo para barba", preco: 42, descricao: "Hidrata os fios e acalma a pele depois do barbear.", foto: null }
-  ]
+  }
 };

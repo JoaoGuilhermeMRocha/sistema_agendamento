@@ -30,6 +30,25 @@
     </div>
   </header>
 
+  <!-- Aparece no lugar do painel enquanto ninguém entrou. -->
+  <main id="entrar" class="entrar" aria-labelledby="t-entrar" hidden>
+    <form id="formEntrar" class="cartao entrar__cartao" novalidate>
+      <span class="entrar__emblema" aria-hidden="true"></span>
+      <h1 id="t-entrar" class="entrar__titulo letreiro">Painel</h1>
+      <p class="cartao__texto">Entre com o usuário e a senha que você recebeu.</p>
+      <label class="campo">
+        <span class="campo__rotulo">Usuário</span>
+        <input name="usuario" class="entrada" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+      </label>
+      <label class="campo">
+        <span class="campo__rotulo">Senha</span>
+        <input name="senha" class="entrada" type="password" autocomplete="current-password" required>
+      </label>
+      <p class="campo__erro" role="alert"></p>
+      <button class="botao botao--destaque botao--largo" type="submit">Entrar</button>
+    </form>
+  </main>
+
   <nav class="abas" aria-label="Seções do painel">
     <a class="aba" href="#agenda" data-aba="agenda"><span data-icone="calendario"></span><span>Agenda</span></a>
     <a class="aba" href="#horarios" data-aba="horarios"><span data-icone="relogio"></span><span>Horários</span></a>
@@ -334,8 +353,12 @@
     </section>
 
     <footer class="painel__rodape">
-      <p>Por enquanto, os dados ficam salvos só neste navegador. Quando o banco de dados entrar no ar, eles passam a valer em qualquer aparelho.</p>
-      <div class="painel__testes">
+      <div class="painel__sessao">
+        <span>Conectado como <strong id="sessaoNome"></strong></span>
+        <button id="sair" class="botao botao--contorno botao--pequeno" type="button">Sair</button>
+      </div>
+      <!-- Só no computador de desenvolvimento (DJANGO_DEBUG=1). -->
+      <div id="ferramentasDeTeste" class="painel__testes" hidden>
         <button id="gerarExemplo" class="botao botao--contorno botao--pequeno" type="button">Gerar dados de exemplo</button>
         <button id="apagarTudo" class="botao botao--perigo botao--pequeno" type="button">Apagar dados de teste</button>
       </div>

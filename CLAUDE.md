@@ -6,7 +6,7 @@ Responda ao usuário em português do Brasil, num tom direto e informal.
 
 ## Como rodar
 
-O sistema está migrando do protótipo (`localStorage`) para Django + PostgreSQL. O caminho e o andamento estão no `PLANO.md`.
+O front fala com um backend Django + PostgreSQL pela API em `/api/`. O caminho até o sistema no ar e o andamento estão no `PLANO.md`.
 
 ```bash
 podman start agenda-postgres          # PostgreSQL 16 local, num container
@@ -26,7 +26,7 @@ No computador (`DJANGO_DEBUG=1`), o Django entrega as páginas e qualquer arquiv
 
 - `/agendar` e `/loja` são públicas e linkam uma para a outra.
 - `/barbeiros` é a área administrativa. Ela linka para as páginas públicas, mas **nenhuma página pública pode linkar para o painel**. O painel tem `noindex` (meta e cabeçalho `X-Robots-Tag`).
-- **Login**: a API do painel (`/api/painel/`) exige login (usuário do Django ligado ao barbeiro em `Profissional.usuario`, criado pelo admin). A tela de entrar no `/barbeiros` entra na etapa 6, junto com o front ligado à API. **Todos os barbeiros podem alterar tudo** (decisão do João); a única restrição é o valor (veja Pendências).
+- **Login**: o painel exige login (usuário do Django ligado ao barbeiro em `Profissional.usuario`, criado pelo admin). Sem login, o `/barbeiros` mostra a tela de entrar (`#entrar`, com `body[data-entrar]` escondendo abas e painel), e o `barbeiros.js` só continua depois que o login dá certo (`await carregarPainel()` no topo do módulo). "Sair" fica no rodapé. **Todos os barbeiros podem alterar tudo** (decisão do João); a única restrição é o valor: cada um vê só o dos próprios atendimentos.
 
 ## Arquivos
 
@@ -34,16 +34,16 @@ Os arquivos do front abaixo ficam em `web/`.
 
 | Arquivo | Papel |
 | --- | --- |
-| `config.js` | **Tudo o que muda por cliente**: nome, selo ("Since 2017"), slogan, endereço, link do Google Maps, WhatsApp, Instagram, profissionais, expediente padrão, parâmetros da agenda, serviços iniciais e produtos iniciais |
+| `config.js` | **Textos e contatos do cliente**: nome, selo ("Since 2017"), slogan, endereço, link do Google Maps, WhatsApp, Instagram, a foto provisória de cada profissional (vale enquanto não houver uma enviada; nome e descrição vêm do servidor, que substitui `config.profissionais` ao carregar) e os parâmetros da agenda (os mesmos de `AGENDA` no `settings.py`) |
 | `tema.css` | **Identidade visual por cliente**: fontes, cores (tokens `--cor-*`, incluindo a cor de cada símbolo de serviço), imagens (`--imagem-*`) e cores do xadrez |
 | `imagens/` | Imagens do cliente: `capa.jpg` (capa do agendamento), `loja.jpg` (topo da loja), `emblema.svg` (logo redondo, usado também como favicon), `arabesco.svg` (ornamento) e o retrato de cada profissional (hoje `santiago.svg` e `damigo.svg`, silhuetas provisórias até chegarem as fotos) |
 | `agenda.js` | Regras de agenda, em **funções puras**: datas, recorrência, disponibilidade, escolha de profissional e conflitos |
-| `dados.js` | **Camada de dados**. Hoje grava no `localStorage`; é o único arquivo que troca quando entrar o PostgreSQL. Valida tudo como o servidor vai ter que validar |
+| `dados.js` | **Camada de dados**: as chamadas à API (`fetch` com o cabeçalho de CSRF). Toda função devolve uma Promise de `{ ok: true, ... }` ou `{ ok: false, erro, status }` e nunca lança erro (sem internet também vira `{ ok: false }`). `aoMudar(buscar, callback)` confere a cada 30 s e quando a aba volta a aparecer |
 | `ui.js` | Peças de interface compartilhadas: `el()`, ícones SVG, `preencherMarca()`, máscara de telefone, links de WhatsApp e Google Maps, aviso flutuante e confirmação com dois toques |
 | `base.css` | Base comum: reset, cabeçalho, botões, campos, chips, folha (`<dialog>`) e ornamentos (`.filete`, `.faixa`, `.arabescos`, `.xadrez`, `.capitone`) |
 | `agendar.*`, `loja.*`, `barbeiros.*` | HTML, CSS e JS de cada página |
 | `relatorios.js`, `relatorios.css` | Aba Relatórios do painel: filtros, indicadores, agrupamento, tabela, CSV e a versão impressa (PDF) |
-| `exemplo.js` | Gerador de dados de exemplo (botão "Gerar dados de exemplo" no rodapé do painel): 150 atendimentos em agosto, 150 em setembro e 100 em outubro do ano atual, com 4 séries recorrentes, e a **semana atual lotada** (todo horário livre de cada profissional ganha um atendimento que caiba no espaço). Respeita as regras da agenda e é determinístico (semente fixa). As metas ficam em `METAS` |
+| `exemplo.js` | Gerador de dados de exemplo (botão "Gerar dados de exemplo" no rodapé do painel, só com `DJANGO_DEBUG=1`; os serviços são achados pelo símbolo, porque os ids vêm do banco): 150 atendimentos em agosto, 150 em setembro e 100 em outubro do ano atual, com 4 séries recorrentes, e a **semana atual lotada** (todo horário livre de cada profissional ganha um atendimento que caiba no espaço). Respeita as regras da agenda e é determinístico (semente fixa). As metas ficam em `METAS` |
 | `graficos.js` | Gráficos em SVG puro (colunas, barras, linha e rosca), com dica no mouse, toque e teclado |
 | `referencias/` | Material de referência da Santiago (logo, posts e fotos do salão). Não é servido nem usado pelo sistema |
 
@@ -54,8 +54,8 @@ Backend, na raiz:
 | `arsystems/` | Projeto Django: `settings.py` (lê o `.env`) e `urls.py` (páginas, admin e, no computador, os arquivos de `web/`) |
 | `barbearia/` | O app: `models.py` (tabelas, com `CheckConstraint` garantindo as regras no banco), `admin.py` e `views.py` |
 | `barbearia/agenda.py` | **As regras da agenda em Python** (tradução do `agenda.js`), em funções puras sobre um `Estado` montado por `carregar_estado()`. É o servidor que decide; o `agenda.js` só desenha o painel. **Mudou uma regra num, mude no outro** |
-| `barbearia/dados.py` | **Validação e gravação** (o equivalente do `web/dados.js` no servidor, com as mesmas mensagens). Recusa com `Recusado("mensagem")`. Marcar horário trava as linhas dos profissionais (`select_for_update`) antes de conferir a agenda: é a trava contra reserva dupla. `{ simular }` aplica a mudança numa transação, devolve os conflitos novos e desfaz |
-| `barbearia/api.py`, `barbearia/urls.py` | **API JSON** em `/api/`. Respostas no formato do `dados.js` (`{ ok: true, ... }` ou `{ ok: false, erro }` com status 400) e campos em camelCase como no front. `/api/publico/` (vitrine, horários e agendar) nunca devolve dado de outros clientes. `/api/painel/` devolve o estado inteiro e recebe as alterações. `painel/exemplo` e `painel/dados-de-teste` só existem com `DJANGO_DEBUG=1`. Login por `painel/entrar` e `painel/sair`. `painel/eu` diz quem está logado (401 sem login). Sem login, o painel responde 401; usuário sem barbeiro ativo, 403. 5 senhas erradas seguidas bloqueiam o usuário por 15 minutos. No estado, o `preco` dos atendimentos dos colegas vem `null`; o superusuário (o João, no suporte) vê tudo. Os POST, PUT e DELETE precisam do cabeçalho `X-CSRFToken` (cookie `csrftoken`, entregue pela vitrine e pelo estado) |
+| `barbearia/dados.py` | **Validação e gravação**, com as mensagens que aparecem na tela. Recusa com `Recusado("mensagem")`. Marcar horário trava as linhas dos profissionais (`select_for_update`) antes de conferir a agenda: é a trava contra reserva dupla. `{ simular }` aplica a mudança numa transação, devolve os conflitos novos e desfaz. A foto do produto chega em data URL, é conferida pelo Pillow e vira arquivo em `midia/` |
+| `barbearia/api.py`, `barbearia/urls.py` | **API JSON** em `/api/`. Respostas `{ ok: true, ... }` ou `{ ok: false, erro }` (status 400; falha de CSRF também responde assim, com 403) e campos em camelCase como no front. `/api/publico/` (vitrine, horários e agendar) nunca devolve dado de outros clientes. `/api/painel/` devolve o estado inteiro e recebe as alterações. `painel/exemplo` e `painel/dados-de-teste` só existem com `DJANGO_DEBUG=1`. Login por `painel/entrar` e `painel/sair`. `painel/eu` diz quem está logado (401 sem login). Sem login, o painel responde 401; usuário sem barbeiro ativo, 403. 5 senhas erradas seguidas bloqueiam o usuário por 15 minutos. No estado, o `preco` dos atendimentos dos colegas vem `null`; o superusuário (o João, no suporte) vê tudo. Os POST, PUT e DELETE precisam do cabeçalho `X-CSRFToken` (cookie `csrftoken`, entregue pela vitrine e pelo estado) |
 | `barbearia/tests/` | Testes automáticos (`uv run python manage.py test barbearia`). O "agora" dos testes é fixo (segunda, 02/11/2026, 10h) |
 | `clientes/<slug>/dados_iniciais.json` | Dados iniciais de cada barbearia (profissionais, expedientes, serviços e produtos), carregados com `manage.py loaddata` |
 | `pyproject.toml`, `uv.lock`, `.python-version` | Dependências e versão do Python, gerenciadas pelo `uv` |
@@ -64,20 +64,21 @@ As páginas preenchem nome, endereço e contatos a partir do `config.js` (`data-
 
 ## Replicar para um novo cliente
 
-1. Editar `config.js`: textos, contatos, serviços iniciais, profissionais (com foto e descrição) e expediente. Trocar o `slug`, que separa os dados salvos de cada barbearia.
+1. Editar `config.js`: textos, contatos e a foto provisória de cada profissional. Trocar o `slug`.
 2. Editar `tema.css`: fontes, cores e caminhos das imagens.
 3. Trocar os arquivos de `imagens/` e o `favicon.svg`.
 4. Ajustar o `<meta name="theme-color">` dos três HTML para a cor de fundo do tema.
 5. Criar `clientes/<slug>/dados_iniciais.json` com profissionais, expedientes, serviços e produtos.
 
-Não espalhe dado de cliente pelo código: o que for específico de uma barbearia vai para `config.js` ou `tema.css`.
+Não espalhe dado de cliente pelo código: o que for específico de uma barbearia vai para `config.js`, `tema.css` ou `clientes/<slug>/`.
 
 ## Funcionalidades
 
 **Cliente (`/agendar`)**
 - Fluxo em 4 etapas: serviços (vários, somando preço e duração; começa sem nenhum marcado), profissional ("Sem preferência" ou um barbeiro), dia e horário (próximos 14 dias, horários a cada 15 min) e dados (nome e WhatsApp com máscara).
-- **Profissional com foto**: cada barbeiro é um cartão (`.profissional`) com retrato redondo, nome e `descricao`, vindos de `config.profissionais` (`foto` e `descricao`). Sem foto, aparece a inicial (`retrato--inicial`). "Sem preferência" mostra os retratos de todos, encavalados. Com 4 barbeiros ou mais, a fileira rola para o lado. O retrato pequeno (`retrato--mini`) aparece também no resumo e na confirmação. Fotos: quadradas, rosto centralizado, 400×400px basta.
-- O cliente marca **um atendimento por vez**. Repetição só pelo painel (decisão da barbearia): o `dados.js` ignora a repetição quando a origem não é `"painel"`.
+- A página recebe só a vitrine (serviços, profissionais e produtos). **Os horários livres vêm prontos do servidor** (`horariosDisponiveis`), sem dado de quem já marcou, e são conferidos de novo a cada minuto. O botão de confirmar trava enquanto o servidor responde.
+- **Profissional com foto**: cada barbeiro é um cartão (`.profissional`) com retrato redondo, nome e `descricao`, vindos do servidor (a foto cai na do `config.js` enquanto não houver uma enviada). Sem foto, aparece a inicial (`retrato--inicial`). "Sem preferência" mostra os retratos de todos, encavalados. Com 4 barbeiros ou mais, a fileira rola para o lado. O retrato pequeno (`retrato--mini`) aparece também no resumo e na confirmação. Fotos: quadradas, rosto centralizado, 400×400px basta.
+- O cliente marca **um atendimento por vez**. Repetição só pelo painel (decisão da barbearia): a rota pública do servidor ignora a repetição.
 - O agendamento é **confirmado na hora**: não há etapa de aprovar ou recusar.
 - No celular, uma barra fixa embaixo mostra o valor e o próximo passo. No computador, o resumo fica num cartão lateral fixo.
 - A tela de confirmação tem "Marcar outro horário" e "Falar com a barbearia" (WhatsApp).
@@ -96,14 +97,15 @@ Não espalhe dado de cliente pelo código: o que for específico de uma barbeari
   - Tocar num atendimento abre uma folha com os detalhes, o lembrete pronto no WhatsApp, "Tornar recorrente" (só em avulsos, de qualquer data), "cancelar só este dia" e "encerrar repetição a partir deste dia".
 - **Novo atendimento** (janela aberta pelo horário livre do quadro, não é mais aba nem botão): agendamento manual, com repetição opcional (semanal, quinzenal ou mensal, com 2 a 52 atendimentos ou **sem data para terminar**). O seletor mostra só horários livres. Blocos baixos ganham `bloco--curto` (sem horário) ou `bloco--mini` (uma linha só). Na visão do dia o bloco mostra o nome inteiro do cliente.
 - **Horários**: expediente individual de cada profissional por dia da semana (início, fim e pausa), folgas e ausências por profissional, feriados e bloqueios da barbearia toda. Os três cartões recolhem (`<details class="cartao cartao--recolhivel">`, seta à direita do título) e começam fechados.
-- **Serviços**: cadastrar, editar e remover (nome, preço, duração em passos de 15 min e símbolo na agenda, de `ICONES_DE_SERVICO` em `dados.js`). Cada símbolo tem uma cor própria (tokens `--cor-icone-*` no `tema.css`, aplicados pela classe `icone-servico--<nome>`), para reconhecer o serviço só pela cor. Os serviços ficam nos dados salvos; o `config.js` só tem os iniciais. Remover só marca `removido: true`, para os atendimentos antigos continuarem com o nome, e o último serviço não pode ser removido. Mudar preço ou duração não altera quem já marcou, porque o agendamento guarda `preco` e `duracao`.
+- **Serviços**: cadastrar, editar e remover (nome, preço, duração em passos de 15 min e símbolo na agenda, de `ICONES_DE_SERVICO` em `dados.js`). Cada símbolo tem uma cor própria (tokens `--cor-icone-*` no `tema.css`, aplicados pela classe `icone-servico--<nome>`), para reconhecer o serviço só pela cor. Os serviços ficam no banco; os iniciais vêm do `dados_iniciais.json`. Remover só marca `removido: true`, para os atendimentos antigos continuarem com o nome, e o último serviço não pode ser removido. Mudar preço ou duração não altera quem já marcou, porque o agendamento guarda `preco` e `duracao`.
 - **Produtos**: cadastrar, **editar** (reaproveita o formulário) e remover. A foto é reduzida para 900px em JPEG antes de salvar.
 - **Relatórios**: funciona como um painel de BI. Filtros numa faixa só no topo (período com atalhos ou datas, profissional, serviço, origem e tipo); indicadores (faturamento, atendimentos, ticket médio, clientes e ocupação da agenda) com variação contra o período anterior; um gráfico em que o barbeiro escolhe o que mostrar (faturamento, atendimentos, horas ou ticket), como agrupar (dia, semana, mês, dia da semana, horário, profissional, serviço, origem, tipo ou cliente) e o tipo (colunas, barras, linha, rosca ou só tabela); e a tabela com os mesmos números, sempre visível.
   - Os números saem das ocorrências no período (repetições abertas dia a dia, `atendimentosDoDia`). Atendimento com vários serviços conta em cada um, com valor e tempo divididos na proporção do preço e da duração dos serviços.
   - Linha só para agrupamentos de tempo; rosca só para categorias com soma (não para ticket nem cliente), com no máximo 5 fatias com cor própria + "Outros". No gráfico, clientes viram os 9 maiores + "Outros"; a tabela traz todos.
   - **CSV**: os atendimentos filtrados, um por linha, no padrão do Excel em português (`;`, vírgula decimal, BOM). Nome começando com `= + - @` ganha um apóstrofo para não virar fórmula.
   - **PDF**: `window.print()` (o barbeiro escolhe "Salvar como PDF"). O `@media print` do `relatorios.css` mostra só o relatório, com cabeçalho da barbearia e filtros; as cores de papel ficam no `@media print` do `tema.css`.
-- O painel atualiza sozinho quando outra aba muda os dados (evento `storage`).
+- **Valores**: o servidor manda `preco: null` nos atendimentos dos colegas. A agenda soma só os próprios (`somaDosValores` e `temValor`): cabeçalho, lista e detalhe não mostram valor de colega. O relatório fica travado em quem está logado (`barbeiroTravado()`), sem o filtro e sem o agrupamento por profissional; o administrador vê tudo.
+- O painel atualiza sozinho quando outro aparelho muda os dados (`aoMudar`, a cada 30 s e ao voltar para a aba). Cada envio de formulário trava o botão enquanto o servidor responde (`enviando()`), e a resposta passa por `resultado()`, que mostra o erro ou recarrega o estado.
 
 ## Regras de negócio (em `agenda.js` e `barbearia/agenda.py`)
 
@@ -115,20 +117,25 @@ Os nomes em Python são os mesmos em `snake_case` (`profissionalLivre` → `prof
 - **Tornar recorrente** (`tornarRecorrente` em `dados.js`): atendimento de hoje ou futuro vira o primeiro da série. Se já passou, ele fica como está e nasce um agendamento novo na próxima data da regra (`inicioDaRecorrencia`), com o preço e a duração atuais dos serviços. Recusa se o profissional não estiver livre em alguma data da série.
 - **Mensal = mesmo dia da semana do mês** ("toda 3ª terça"). A 5ª ocorrência vira "a última do mês". Decisão do usuário: assim o atendimento nunca cai em dia fechado nem num dia 31 que não existe.
 - **Sem data para terminar**: os conflitos de uma nova série são conferidos até `config.agenda.horizonteRecorrenciaDias` (180 dias).
-- **Mudança de horário com cliente já marcado**: antes de salvar expediente, ausência ou bloqueio, o painel simula a mudança (`{ simular: true }` em `dados.js`) e compara `conflitosFuturos` antes e depois. Se alguém for atingido, mostra a lista agrupada por cliente e pede "Salvar mesmo assim". Os atendimentos afetados continuam na agenda, com alerta, para o barbeiro remarcar ou cancelar.
+- **Mudança de horário com cliente já marcado**: antes de salvar expediente, ausência ou bloqueio, o painel pede ao servidor para simular a mudança (`{ simular: true }`), que devolve só os conflitos novos. Se alguém for atingido, mostra a lista agrupada por cliente e pede "Salvar mesmo assim". Os atendimentos afetados continuam na agenda, com alerta, para o barbeiro remarcar ou cancelar.
 
-## Modelo de dados (`localStorage`, chave `agenda:<slug>:v1`)
+## Formato do estado (`GET /api/painel/estado`)
+
+As tabelas estão em `barbearia/models.py`. O front recebe o estado neste formato, o mesmo do antigo `localStorage`:
 
 ```js
 {
-  proximoId,
+  hoje, ferramentasDeTeste,                                                  // ferramentasDeTeste = DJANGO_DEBUG
+  eu: { usuario, nome, profissionalId, administrador },
+  profissionais: [{ id, nome, descricao, foto }],
   agendamentos: [{ id, cliente: { nome, telefone }, servicos: [ids], profissionalId, data, inicio,
                    duracao, preco, repeticao: { frequencia, vezes }, excecoes: [datas], ate, origem, criadoEm }],
+                                                                             // preco = null nos atendimentos dos colegas
   ausencias:   [{ id, profissionalId, inicio, fim, horaInicio, horaFim }],  // horas vazias = dia inteiro
   bloqueios:   [{ id, data, motivo, horaInicio, horaFim }],
   expedientes: { [profissionalId]: { 0..6: { inicio, fim, pausaInicio, pausaFim } | null } },
   servicos:    [{ id, nome, preco, duracao, icone, removido? }],            // id em texto
-  produtos:    [{ id, nome, preco, descricao, foto }]                        // foto = data URL ou null
+  produtos:    [{ id, nome, preco, descricao, foto }]                        // foto = endereço em /midia/ ou null
 }
 ```
 
@@ -149,17 +156,15 @@ Datas são strings `AAAA-MM-DD` e horas são `HH:MM`. Telefones são guardados s
 
 ## Como testar
 
-As regras da agenda em Python têm testes automáticos: `uv run python manage.py test barbearia` (precisa do container do Postgres ligado, porque um dos testes usa o banco). O front ainda não tem. Para validar o front:
-- Abra as três páginas **no mesmo navegador**: os dados são do `localStorage`.
-- Em sessões anteriores os testes foram feitos com o Brave em modo headless via DevTools Protocol, em 360, 390 e 1280px, conferindo erros de console. O "Apagar dados de teste" do painel zera o estado, e o "Gerar dados de exemplo" troca os atendimentos por uma base de agosto a outubro, com a semana atual lotada (bom para testar agenda e relatórios).
+- **Backend**: `uv run python manage.py test barbearia` (regras, API, login, fotos e a reserva dupla com dois pedidos simultâneos). Precisa do container do Postgres ligado.
+- **Front**: sem testes automáticos no projeto. Na etapa 6 o teste foi feito com o Brave (Flatpak) em headless (`flatpak run com.brave.Browser --headless=new --remote-debugging-port=9222`) e o Playwright ligado nele por CDP (`uv run --with playwright`), contra um **segundo servidor na porta 8001 com um banco de rascunho** (`POSTGRES_DB=rascunho`, que tem prioridade sobre o `.env`), para não mexer nos dados do João. Em 360, 390 e 1280px, conferindo erros de console (o 401 de antes do login e o 400 de senha errada são esperados).
+- "Gerar dados de exemplo" troca os atendimentos por uma base de agosto a outubro, com a semana atual lotada (bom para testar agenda e relatórios). "Apagar dados de teste" apaga atendimentos, ausências e bloqueios. Os dois só aparecem com `DJANGO_DEBUG=1`.
 
 ## Pendências (fora do protótipo)
 
-- Backend com PostgreSQL substituindo `dados.js` por chamadas de API, com validação no servidor, trava contra reserva dupla no banco e fuso horário da barbearia (hoje usa o do navegador).
-- Pedido do Santiago: **cada barbeiro vê só os próprios valores**, e isso vale para ele também, que é o dono. O servidor já esconde o valor (etapa 5); falta o front respeitar (etapa 6). Na agenda, os atendimentos dos outros continuam visíveis, mas sem valor (bloco, detalhe, cabeçalhos e lista). Nos relatórios, o barbeiro vê só os próprios dados: o relatório fica travado nele, sem o filtro e sem o agrupamento por profissional.
-- Armazenamento real das fotos (hoje são data URLs no `localStorage`).
+- O front ainda calcula "hoje" e "agora" pelo relógio do aparelho (o servidor usa o fuso da barbearia). Só faz diferença em celular com a hora errada; quem decide se o horário está livre é o servidor.
 - Cliente consultar e desmarcar o próprio horário. Lembrete automático no WhatsApp (hoje é um toque, via link `wa.me`).
 - LGPD: hoje há só uma linha de aviso no formulário. Falta política de privacidade e consentimento.
-- Editar profissionais pelo painel (hoje ficam no `config.js`), incluindo o envio da foto (dá para reaproveitar o `reduzirFoto()` dos produtos).
+- Editar profissionais pelo painel (hoje pelo admin do Django), incluindo o envio da foto (dá para reaproveitar o `reduzirFoto()` e o `ler_foto()` dos produtos).
 - Trocar os retratos provisórios pelas fotos reais do Santiago e do Damigo, e confirmar as descrições ("Fundador da casa" e "Barbeiro" foram inventadas).
 - Avaliações no Google: o Google não aceita avaliação enviada pelo site (a API só lê e responde). O caminho é o link direto de avaliação do perfil, pedido pelo WhatsApp depois do atendimento e no rodapé. Regras do Google: não filtrar quem é mandado para lá pela nota e não dar brinde em troca.

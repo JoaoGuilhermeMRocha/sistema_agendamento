@@ -1,9 +1,6 @@
 import { config } from "./config.js";
-import {
-  diaFechado, formatarData, formatarMoeda, hoje,
-  horariosLivres, profissionalPorId, servicosAtivos, somarDias, somarServicos
-} from "./agenda.js";
-import { aoMudar, carregar, criarAgendamento } from "./dados.js";
+import { formatarData, formatarMoeda, hoje, profissionalPorId, servicosAtivos, somarDias, somarServicos } from "./agenda.js";
+import { aoMudar, carregarVitrine, criarAgendamento, horariosDisponiveis } from "./dados.js";
 import {
   $, aplicarIcones, capitalizar, el, formatarTelefone, icone, linkWhatsApp, mascararTelefone,
   mostrarErroCampo, preencherMarca, soDigitos
@@ -20,9 +17,11 @@ const escolha = {
   data: null,
   horario: null
 };
-// Repetição só se cria pelo painel; pelo site o cliente marca um atendimento por vez.
-const SEM_REPETICAO = { frequencia: "nenhuma", vezes: 1 };
-let estado = carregar();
+// Serviços, profissionais e produtos. Os horários livres o servidor calcula (horariosDisponiveis),
+// sem mandar para cá os dados de quem já marcou.
+let estado = await carregarVitrine();
+// Cada busca de horários ganha um número; resposta de uma busca antiga é ignorada.
+let buscaDeHorarios = 0;
 
 const soma = () => somarServicos(estado, escolha.servicos);
 const pronto = () => escolha.servicos.length && escolha.data && escolha.horario;
@@ -97,20 +96,25 @@ function rotuloDia(data) {
   return formatarData(data, { weekday: "short" }).replace(".", "");
 }
 
-function desenharDias() {
-  // Sem serviço escolhido, os dias usam o serviço mais curto para não aparecerem todos como lotados.
-  const duracao = soma().duracao || Math.min(...servicosAtivos(estado).map(servico => servico.duracao));
-  const dias = Array.from({ length: config.agenda.diasParaAgendar }, (_, indice) => somarDias(hoje(), indice));
-  const livres = new Map(dias.map(data => [data, horariosLivres(estado, {
-    data, repeticao: SEM_REPETICAO, duracao, profissionalId: escolha.profissionalId
-  })]));
+async function desenharDias() {
+  // Sem serviço escolhido, o servidor usa o mais curto para os dias não aparecerem todos como lotados.
+  const numero = ++buscaDeHorarios;
+  const resposta = await horariosDisponiveis({ servicos: escolha.servicos, profissionalId: escolha.profissionalId });
+  if (numero !== buscaDeHorarios) return;
+  if (!resposta.ok) {
+    $("#horarios").replaceChildren(el("p", { class: "horarios__aviso" }, resposta.erro));
+    return;
+  }
+  const dias = resposta.dias.map(dia => dia.data);
+  const livres = new Map(resposta.dias.map(dia => [dia.data, dia.horarios]));
+  const fechados = new Set(resposta.dias.filter(dia => dia.fechado).map(dia => dia.data));
 
   if (escolha.data && !livres.get(escolha.data)?.length) escolha.data = null;
   escolha.data ??= dias.find(data => livres.get(data).length) || null;
 
   $("#dias").replaceChildren(...dias.map(data => {
     const disponivel = livres.get(data).length > 0;
-    const fechado = diaFechado(estado, data, escolha.profissionalId);
+    const fechado = fechados.has(data);
     return el("button", {
       type: "button",
       class: "dia",
@@ -208,8 +212,9 @@ function desenharResumo() {
   $("#confirmar").classList.toggle("resumo__botao--pendente", Boolean(pendencia));
 }
 
-function atualizarAgenda() {
-  desenharDias();
+async function atualizarAgenda() {
+  desenharResumo();
+  await desenharDias();
   desenharResumo();
 }
 
@@ -223,8 +228,9 @@ function validarContato() {
   return null;
 }
 
-$("#agendar").addEventListener("submit", evento => {
+$("#agendar").addEventListener("submit", async evento => {
   evento.preventDefault();
+  if ($("#confirmar").disabled) return;
   $("#erroEnvio").textContent = "";
 
   const pendencia = proximaPendencia();
@@ -239,7 +245,10 @@ $("#agendar").addEventListener("submit", evento => {
     return;
   }
 
-  const resultado = criarAgendamento({
+  // Travado enquanto o servidor responde: um toque duplo não marca dois horários.
+  $("#confirmar").disabled = true;
+  $("#confirmar").textContent = "Confirmando…";
+  const resultado = await criarAgendamento({
     nome: campos.nome.value,
     telefone: campos.telefone.value,
     servicos: escolha.servicos,
@@ -248,12 +257,14 @@ $("#agendar").addEventListener("submit", evento => {
     inicio: escolha.horario,
     origem: "cliente"
   });
+  $("#confirmar").disabled = false;
 
   if (!resultado.ok) {
     $("#erroEnvio").textContent = resultado.erro;
-    estado = carregar();
+    const novo = await carregarVitrine();
+    if (novo.ok) estado = novo;
     desenharServicos();
-    atualizarAgenda();
+    await atualizarAgenda();
     return;
   }
   mostrarConfirmacao(resultado.agendamento);
@@ -293,10 +304,11 @@ function mostrarConfirmacao(agendamento) {
   window.scrollTo({ top: 0 });
 }
 
-$("#novoAgendamento").addEventListener("click", () => {
+$("#novoAgendamento").addEventListener("click", async () => {
   escolha.data = null;
   escolha.horario = null;
-  estado = carregar();
+  const novo = await carregarVitrine();
+  if (novo.ok) estado = novo;
   $("#confirmado").hidden = true;
   $("#areaAgendamento").hidden = false;
   document.body.classList.remove("concluido");
@@ -310,14 +322,22 @@ $("#novoAgendamento").addEventListener("click", () => {
 preencherMarca();
 aplicarIcones();
 mascararTelefone(campos.telefone);
-desenharServicos();
-desenharProfissionais();
-atualizarAgenda();
-
-// Outra aba (o painel, por exemplo) mudou a agenda: atualiza os horários livres.
-aoMudar(novo => {
-  estado = novo;
-  if ($("#areaAgendamento").hidden) return;
+if (estado.ok) {
   desenharServicos();
+  desenharProfissionais();
   atualizarAgenda();
-});
+
+  // O painel mudou serviços ou profissionais: redesenha. Os horários são conferidos a cada minuto,
+  // porque outros clientes estão marcando ao mesmo tempo.
+  const visivel = () => !document.hidden && !$("#areaAgendamento").hidden;
+  aoMudar(carregarVitrine, novo => {
+    estado = novo;
+    if (!visivel()) return;
+    desenharServicos();
+    desenharProfissionais();
+    atualizarAgenda();
+  });
+  setInterval(() => visivel() && atualizarAgenda(), 60000);
+} else {
+  $("#servicos").replaceChildren(el("p", { class: "horarios__aviso" }, estado.erro));
+}

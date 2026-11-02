@@ -3,16 +3,21 @@
 Aqui o "agora" é o real, então as datas são calculadas a partir de hoje.
 """
 
+import base64
 import json
+import os
+import tempfile
 import threading
+from io import BytesIO
 from datetime import timedelta
 
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.cache import cache
 from django.db import connection
-from django.test import TestCase, TransactionTestCase
+from django.test import TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
+from PIL import Image
 
 from barbearia import dados
 from barbearia.models import Agendamento, Excecao, Profissional, Servico
@@ -143,7 +148,7 @@ class PainelTests(ApiTestCase):
     def test_estado_no_formato_do_front(self):
         self.novo()
         _, estado = self.chamar("get", "/api/painel/estado")
-        self.assertEqual(set(estado), {"ok", "hoje", "eu", "profissionais", "agendamentos", "ausencias", "bloqueios",
+        self.assertEqual(set(estado), {"ok", "hoje", "ferramentasDeTeste", "eu", "profissionais", "agendamentos", "ausencias", "bloqueios",
                                        "expedientes", "servicos", "produtos"})
         self.assertEqual(estado["expedientes"]["santiago"]["2"],
                          {"inicio": "09:00", "fim": "18:00", "pausaInicio": "12:00", "pausaFim": "13:00"})
@@ -185,7 +190,8 @@ class PainelTests(ApiTestCase):
         dias = {"2": {"inicio": "09:00", "fim": "15:00", "pausaInicio": "", "pausaFim": ""}}
         _, resposta = self.chamar("put", "/api/painel/expedientes/santiago", {"dias": dias, "simular": True})
         [conflito] = resposta["conflitos"]
-        self.assertEqual((conflito["cliente"], conflito["inicio"], conflito["motivo"]), ("Ana", "16:00", "Fora do expediente"))
+        self.assertEqual((conflito["cliente"], conflito["profissionalId"], conflito["inicio"], conflito["motivo"]),
+                         ("Ana", "santiago", "16:00", "Fora do expediente"))
         _, estado = self.chamar("get", "/api/painel/estado")
         self.assertEqual(estado["expedientes"]["santiago"]["2"]["fim"], "18:00")  # nada mudou
 
@@ -235,6 +241,40 @@ class PainelTests(ApiTestCase):
         self.chamar("delete", f"/api/painel/produtos/{id}")
         _, resposta = self.chamar("get", "/api/publico/vitrine")
         self.assertEqual(len(resposta["produtos"]), 2)
+
+
+def foto_jpeg():
+    arquivo = BytesIO()
+    Image.new("RGB", (40, 30), "goldenrod").save(arquivo, "JPEG")
+    return "data:image/jpeg;base64," + base64.b64encode(arquivo.getvalue()).decode()
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp(prefix="midia-teste-"))
+class FotoDoProdutoTests(ApiTestCase):
+    def setUp(self):
+        super().setUp()
+        self.client.force_login(self.barbeiro("santiago"))
+
+    def test_foto_vira_arquivo_e_some_ao_remover(self):
+        _, resposta = self.chamar("post", "/api/painel/produtos", {"nome": "Cera", "preco": 30, "foto": foto_jpeg()})
+        produto = resposta["produto"]
+        self.assertRegex(produto["foto"], r"^/midia/produtos/produto.*\.jpg$")
+        caminho = os.path.join(settings.MEDIA_ROOT, produto["foto"].removeprefix("/midia/"))
+        self.assertTrue(os.path.exists(caminho))
+
+        # Editar sem mandar a foto mantém a mesma; mandar null tira.
+        _, resposta = self.chamar("put", f"/api/painel/produtos/{produto['id']}", {"nome": "Cera fosca", "preco": 30})
+        self.assertEqual(resposta["produto"]["foto"], produto["foto"])
+        _, resposta = self.chamar("put", f"/api/painel/produtos/{produto['id']}", {"nome": "Cera", "preco": 30, "foto": None})
+        self.assertIsNone(resposta["produto"]["foto"])
+        self.assertFalse(os.path.exists(caminho))
+
+    def test_recusa_o_que_nao_e_imagem(self):
+        falsa = "data:image/jpeg;base64," + base64.b64encode(b"<script>nada a ver</script>").decode()
+        _, resposta = self.chamar("post", "/api/painel/produtos", {"nome": "Cera", "preco": 30, "foto": falsa})
+        self.assertEqual(resposta["erro"], "Não deu para ler essa foto.")
+        _, resposta = self.chamar("post", "/api/painel/produtos", {"nome": "Cera", "preco": 30, "foto": "data:text/html;base64,AAAA"})
+        self.assertEqual(resposta["erro"], "Use uma foto JPG, PNG ou WebP.")
 
 
 class AcessoTests(ApiTestCase):

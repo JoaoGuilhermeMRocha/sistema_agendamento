@@ -841,6 +841,43 @@ fieldset.campo legend { margin-bottom: 8px; padding: 0; }
 /* Rodapé */
 
 .painel__testes { display: flex; flex-wrap: wrap; gap: 8px; }
+.painel__sessao { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.painel__sessao strong { color: var(--cor-texto); }
+
+/* Tela de entrar: ocupa o lugar das abas e do painel até o barbeiro entrar. */
+
+body[data-entrar] .abas,
+body[data-entrar] .painel { display: none; }
+
+.entrar {
+  display: grid;
+  place-items: center;
+  min-height: calc(100dvh - 160px);
+  padding: 24px 16px calc(24px + env(safe-area-inset-bottom));
+}
+.entrar[hidden] { display: none; }
+
+.entrar__cartao {
+  display: grid;
+  gap: 14px;
+  width: min(100%, 380px);
+  animation: surge .3s var(--mola);
+}
+.entrar__cartao .cartao__texto { margin: 0; }
+
+.entrar__emblema {
+  justify-self: center;
+  width: 72px;
+  height: 72px;
+  background: var(--imagem-emblema) center / contain no-repeat;
+}
+
+.entrar__titulo {
+  font-size: 34px;
+  font-weight: 400;
+  text-align: center;
+  text-transform: uppercase;
+}
 
 .painel__rodape {
   display: grid;

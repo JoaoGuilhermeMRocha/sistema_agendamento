@@ -4,13 +4,18 @@ Cada função confere tudo o que recebe (o pedido pode vir de qualquer lugar, n�
 nossas páginas) e recusa com uma mensagem para o usuário levantando Recusado.
 """
 
+import base64
+import binascii
 import re
 from datetime import date, time
 from decimal import Decimal, InvalidOperation
+from io import BytesIO
 
 from django.conf import settings
+from django.core.files.base import ContentFile
 from django.db import transaction
 from django.utils import timezone
+from PIL import Image, UnidentifiedImageError
 
 from . import agenda
 from .models import ICONES_DE_SERVICO, Agendamento, Ausencia, Bloqueio, Excecao, Expediente, Produto, Profissional, Servico
@@ -239,7 +244,8 @@ def _com_simulacao(mudanca, simular):
                  if (item.id, data) not in antes]
         clientes = Agendamento.objects.in_bulk({item.id for item, _, _ in novos})
         conflitos = [
-            {"id": item.id, "cliente": clientes[item.id].cliente_nome, "data": data.isoformat(),
+            {"id": item.id, "cliente": clientes[item.id].cliente_nome, "profissionalId": item.profissional,
+             "data": data.isoformat(),
              "inicio": f"{item.inicio // 60:02d}:{item.inicio % 60:02d}", "motivo": motivo}
             for item, data, motivo in novos
         ]
@@ -352,7 +358,30 @@ def remover_servico(id):
         servico.save(update_fields=["removido"])
 
 
-# Produtos (a foto entra na etapa 7)
+# Produtos
+
+FOTO_MAXIMA = 3 * 1024 * 1024  # bytes; o painel já reduz a foto para 900px antes de mandar
+
+
+def ler_foto(endereco):
+    """Foto em data URL (data:image/jpeg;base64,...) -> arquivo pronto para o ImageField.
+
+    Abre com o Pillow para garantir que é mesmo uma imagem, e não outra coisa com a extensão trocada.
+    """
+    achado = re.fullmatch(r"data:image/(jpeg|png|webp);base64,([A-Za-z0-9+/=]+)", str(endereco or ""))
+    if not achado:
+        raise Recusado("Use uma foto JPG, PNG ou WebP.")
+    try:
+        bruto = base64.b64decode(achado[2], validate=True)
+    except binascii.Error:
+        raise Recusado("Não deu para ler essa foto.") from None
+    if len(bruto) > FOTO_MAXIMA:
+        raise Recusado("A foto é grande demais. Tente outra.")
+    try:
+        Image.open(BytesIO(bruto)).verify()
+    except (UnidentifiedImageError, OSError, SyntaxError):
+        raise Recusado("Não deu para ler essa foto.") from None
+    return ContentFile(bruto, name=f"produto.{'jpg' if achado[1] == 'jpeg' else achado[1]}")
 
 def _campos_do_produto(dados):
     nome = str(dados.get("nome") or "").strip()
@@ -365,19 +394,33 @@ def _campos_do_produto(dados):
 
 
 def criar_produto(dados):
-    return Produto.objects.create(**_campos_do_produto(dados))
+    produto = Produto(**_campos_do_produto(dados))
+    if dados.get("foto"):
+        produto.foto = ler_foto(dados["foto"])
+    produto.save()
+    return produto
 
 
 def atualizar_produto(id, dados):
+    """foto: ausente mantém a atual, null remove, data URL troca."""
     produto = _buscar(Produto, id, "Esse produto não existe mais.")
     for campo, valor in _campos_do_produto(dados).items():
         setattr(produto, campo, valor)
+    if "foto" in dados:
+        nova = ler_foto(dados["foto"]) if dados["foto"] else None
+        if produto.foto:
+            produto.foto.delete(save=False)
+        produto.foto = nova
     produto.save()
     return produto
 
 
 def remover_produto(id):
-    Produto.objects.filter(pk=id).delete()
+    produto = Produto.objects.filter(pk=id).first() if str(id).isdigit() else None
+    if produto:
+        if produto.foto:
+            produto.foto.delete(save=False)
+        produto.delete()
 
 
 # Ferramentas de teste (só com DJANGO_DEBUG=1)

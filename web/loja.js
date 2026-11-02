@@ -1,6 +1,6 @@
 import { config } from "./config.js";
 import { formatarMoeda } from "./agenda.js";
-import { aoMudar, carregar } from "./dados.js";
+import { aoMudar, carregarVitrine } from "./dados.js";
 import { $, aplicarIcones, el, icone, linkWhatsApp, preencherMarca } from "./ui.js";
 
 function cartao(produto, indice) {
@@ -25,7 +25,11 @@ function cartao(produto, indice) {
         reservar)));
 }
 
-function desenhar({ produtos }) {
+function desenhar({ ok, erro, produtos }) {
+  if (!ok) {
+    $("#produtos").replaceChildren(el("div", { class: "vazio" }, icone("sacola"), el("strong", {}, "A vitrine não carregou"), el("p", {}, erro)));
+    return;
+  }
   $("#produtos").replaceChildren(...(produtos.length
     ? produtos.map(cartao)
     : [el("div", { class: "vazio" },
@@ -36,5 +40,5 @@ function desenhar({ produtos }) {
 
 preencherMarca();
 aplicarIcones();
-desenhar(carregar());
-aoMudar(desenhar);
+desenhar(await carregarVitrine());
+aoMudar(carregarVitrine, desenhar);

@@ -50,11 +50,15 @@ export function gerarExemplo(estado) {
   const ano = new Date().getFullYear();
   const ativos = servicosAtivos(estado);
   const porId = id => ativos.find(servico => servico.id === id);
-  // Combinações mais pedidas primeiro; serviço que não existir mais fica de fora.
+  // Os serviços são achados pelo símbolo na agenda (os ids vêm do banco). Serviço que não existir fica de fora.
+  const SIMBOLOS = { cabelo: "tesoura", barba: "barba", sobrancelha: "sobrancelha" };
+  const servico = apelido => ativos.find(item => item.icone === SIMBOLOS[apelido])?.id ?? "";
+  const [cabelo, barba, sobrancelha] = ["cabelo", "barba", "sobrancelha"].map(servico);
+  // Combinações mais pedidas primeiro.
   const combinacoes = [
-    [["cabelo"], 34], [["cabelo", "barba"], 24], [["barba"], 18], [["sobrancelha"], 6], [["cabelo", "sobrancelha"], 8],
-    [["cabelo", "barba", "sobrancelha"], 4], ...ativos.filter(servico => !["cabelo", "barba", "sobrancelha"].includes(servico.id))
-      .map(servico => [[servico.id], 4])
+    [[cabelo], 34], [[cabelo, barba], 24], [[barba], 18], [[sobrancelha], 6], [[cabelo, sobrancelha], 8],
+    [[cabelo, barba, sobrancelha], 4], ...ativos.filter(item => ![cabelo, barba, sobrancelha].includes(item.id))
+      .map(item => [[item.id], 4])
   ].filter(([ids]) => ids.every(porId));
   if (!combinacoes.length) combinacoes.push([[ativos[0].id], 1]);
 
@@ -85,10 +89,10 @@ export function gerarExemplo(estado) {
   // Clientes de horário fixo. As séries sem fim seguem para os próximos meses.
   const [santiago, damigo] = [config.profissionais[0].id, config.profissionais[1]?.id ?? config.profissionais[0].id];
   const series = [
-    [0, ["barba"], santiago, primeiroDia(ano, 8, 2), "09:00", { frequencia: "semanal", vezes: null }],
-    [1, ["cabelo"], santiago, primeiroDia(ano, 8, 4), "11:00", { frequencia: "quinzenal", vezes: null }],
-    [2, ["cabelo", "barba"], damigo, primeiroDia(ano, 8, 3), "10:00", { frequencia: "semanal", vezes: 8 }],
-    [3, ["cabelo"], damigo, primeiroDia(ano, 8, 5), "16:00", { frequencia: "mensal", vezes: null }]
+    [0, [barba], santiago, primeiroDia(ano, 8, 2), "09:00", { frequencia: "semanal", vezes: null }],
+    [1, [cabelo], santiago, primeiroDia(ano, 8, 4), "11:00", { frequencia: "quinzenal", vezes: null }],
+    [2, [cabelo, barba], damigo, primeiroDia(ano, 8, 3), "10:00", { frequencia: "semanal", vezes: 8 }],
+    [3, [cabelo], damigo, primeiroDia(ano, 8, 5), "16:00", { frequencia: "mensal", vezes: null }]
   ].filter(([, servicos]) => servicos.every(porId));
   for (const [cliente, servicos, profissionalId, data, inicio, repeticao] of series) {
     const agendamento = novo(cliente, servicos, profissionalId, data, inicio, repeticao, "painel");

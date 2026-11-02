@@ -427,9 +427,17 @@ function desenharTabela(grupos) {
 
 /* Montagem */
 
+// Pedido do Santiago: cada barbeiro vê só os próprios números (o servidor nem manda o valor dos
+// colegas). O relatório fica travado nele; só o administrador do sistema vê todos.
+function barbeiroTravado() {
+  const eu = obterEstado()?.eu;
+  return eu && !eu.administrador ? eu.profissionalId : null;
+}
+
 function lerFiltros() {
   const valores = new FormData($("#filtrosRelatorio"));
-  return Object.fromEntries(["periodo", "de", "ate", "profissional", "servico", "origem", "tipo"].map(nome => [nome, valores.get(nome) || ""]));
+  const filtros = Object.fromEntries(["periodo", "de", "ate", "profissional", "servico", "origem", "tipo"].map(nome => [nome, valores.get(nome) || ""]));
+  return { ...filtros, profissional: barbeiroTravado() ?? filtros.profissional };
 }
 
 function descreverFiltros(filtros) {
@@ -451,9 +459,13 @@ function preencherOpcoes() {
     select.value = opcoes.some(([valor]) => valor === anterior) ? anterior : opcoes[0][0];
   };
   manter(form.elements.profissional, [["", "Todos"], ...config.profissionais.map(pessoa => [pessoa.id, pessoa.nome])]);
+  const travado = barbeiroTravado();
+  form.elements.profissional.closest(".campo").hidden = Boolean(travado);
+  const grupos = Object.entries(GRUPOS).filter(([chave]) => !travado || chave !== "profissional");
+  if (!grupos.some(([chave]) => chave === visual.grupo)) visual.grupo = grupos[0][0];
   manter(form.elements.servico, [["", "Todos"], ...estado.servicos.map(servico => [servico.id, servico.removido ? `${servico.nome} (removido)` : servico.nome])]);
   manter($("#relMedida"), Object.entries(MEDIDAS).map(([chave, medida]) => [chave, medida.nome]));
-  manter($("#relGrupo"), Object.entries(GRUPOS).map(([chave, grupo]) => [chave, grupo.nome]));
+  manter($("#relGrupo"), grupos.map(([chave, grupo]) => [chave, grupo.nome]));
   $("#relMedida").value = visual.medida;
   $("#relGrupo").value = visual.grupo;
 }

@@ -1,14 +1,14 @@
 import { config } from "./config.js";
 import {
-  FREQUENCIAS, atendimentosDoDia, conflitoDoAtendimento, conflitosFuturos, daChave, datasDaSerie, descreverMensal,
+  FREQUENCIAS, atendimentosDoDia, conflitoDoAtendimento, daChave, datasDaSerie, descreverMensal,
   descreverRepeticao, diaFechado, expedienteDoDia, formatarData, formatarMoeda, hoje, horaTexto, horariosLivres,
   inicioDaRecorrencia, inicioDaSemana, minutos, motivoIndisponivel, paraChave, profissionalPorId, servicoPorId,
   servicosAtivos, somarDias, somarServicos
 } from "./agenda.js";
 import {
-  ICONES_DE_SERVICO, aoMudar, apagarTudo, cancelarData, carregar, carregarExemplo, criarAgendamento, criarAusencia, criarBloqueio,
-  atualizarProduto, atualizarServico, criarProduto, criarServico, encerrarRepeticao, removerAusencia, removerBloqueio,
-  removerProduto, removerServico, salvarExpediente, tornarRecorrente
+  ICONES_DE_SERVICO, aoMudar, apagarDadosDeTeste, cancelarData, carregar, carregarExemplo, criarAgendamento, criarAusencia,
+  criarBloqueio, atualizarProduto, atualizarServico, criarProduto, criarServico, encerrarRepeticao, entrar, removerAusencia,
+  removerBloqueio, removerProduto, removerServico, sair, salvarExpediente, tornarRecorrente
 } from "./dados.js";
 import {
   $, aplicarIcones, avisar, capitalizar, confirmarNoBotao, el, formatarTelefone, icone, linkWhatsApp,
@@ -20,7 +20,45 @@ import { gerarExemplo } from "./exemplo.js";
 const DIAS_DA_SEMANA = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
 const ORDEM_DA_SEMANA = [1, 2, 3, 4, 5, 6, 0];
 
-let estado = carregar();
+/* Entrar */
+
+// Mostra a tela de entrar e só termina quando o login dá certo.
+function pedirLogin(mensagem) {
+  const form = $("#formEntrar");
+  const erro = form.querySelector(".campo__erro");
+  const botao = form.querySelector('[type="submit"]');
+  document.body.dataset.entrar = "";
+  $("#entrar").hidden = false;
+  erro.textContent = mensagem;
+  form.elements.usuario.focus();
+  return new Promise(resolver => {
+    form.onsubmit = async evento => {
+      evento.preventDefault();
+      if (botao.disabled) return;
+      botao.disabled = true;
+      const retorno = await entrar(form.elements.usuario.value.trim(), form.elements.senha.value);
+      botao.disabled = false;
+      erro.textContent = retorno.ok ? "" : retorno.erro;
+      if (!retorno.ok) return;
+      form.reset();
+      resolver();
+    };
+  });
+}
+
+// O painel só começa a ser montado depois que o estado chega do servidor (o resto do arquivo espera aqui).
+async function carregarPainel() {
+  let resposta = await carregar();
+  while (!resposta.ok) {
+    await pedirLogin(resposta.status === 401 ? "" : resposta.erro);
+    resposta = await carregar();
+  }
+  delete document.body.dataset.entrar;
+  $("#entrar").hidden = true;
+  return resposta;
+}
+
+let estado = await carregarPainel();
 const visao = {
   filtro: null,
   // Dia escolhido: no celular a agenda mostra só ele; no computador, a semana dele.
@@ -37,15 +75,36 @@ const indiceProfissional = id => config.profissionais.findIndex(pessoa => pessoa
 const nomeProfissional = id => profissionalPorId(id)?.nome ?? "—";
 const opcoesProfissionais = () => config.profissionais.map(pessoa => el("option", { value: pessoa.id }, pessoa.nome));
 
-function resultado(retorno, mensagem, alvoErro) {
+async function recarregar() {
+  const novo = await carregar();
+  if (novo.ok) estado = novo;
+}
+
+// Espera a resposta do servidor: no erro, mostra a mensagem; no acerto, recarrega o estado e avisa.
+async function resultado(pedido, mensagem, alvoErro) {
+  const retorno = await pedido;
   if (alvoErro) alvoErro.textContent = retorno.ok ? "" : retorno.erro;
   if (!retorno.ok) {
     avisar(retorno.erro, "erro");
+    // A sessão acabou (expirou ou alguém saiu em outra aba): volta para a tela de entrar.
+    if (retorno.status === 401) setTimeout(() => location.reload(), 1500);
     return false;
   }
-  estado = carregar();
-  avisar(mensagem);
+  await recarregar();
+  avisar(typeof mensagem === "function" ? mensagem(retorno) : mensagem);
   return true;
+}
+
+// Trava o botão de envio do formulário enquanto o servidor responde, contra toque duplo.
+async function enviando(form, tarefa) {
+  const botao = form.querySelector('[type="submit"]');
+  if (botao.disabled) return;
+  botao.disabled = true;
+  try {
+    await tarefa();
+  } finally {
+    botao.disabled = false;
+  }
 }
 
 /* Abas */
@@ -84,7 +143,9 @@ const diasDaSemana = () => Array.from({ length: 7 }, (_, indice) => somarDias(se
 const doFiltro = agendamento => !visao.filtro || agendamento.profissionalId === visao.filtro;
 const doDia = data => atendimentosDoDia(estado, data).filter(doFiltro);
 const daColuna = coluna => atendimentosDoDia(estado, coluna.data).filter(item => coluna.ids.includes(item.profissionalId));
-const somaDosValores = atendimentos => atendimentos.reduce((soma, item) => soma + item.preco, 0);
+// O servidor manda o valor só dos atendimentos de quem está logado: nos dos colegas, preco vem null.
+const somaDosValores = atendimentos => atendimentos.reduce((soma, item) => soma + (item.preco ?? 0), 0);
+const temValor = atendimentos => atendimentos.some(item => item.preco != null);
 
 // Cada coluna do quadro é um dia e os profissionais que ela mostra.
 const colunasDoQuadro = () => visaoDiaria()
@@ -398,7 +459,8 @@ function cabecalhoDoDia(data, atendimentos, fechada) {
     el("span", { class: "quadro__semana" }, DIAS_CURTOS[daChave(data).getDay()]),
     el("strong", { class: "quadro__numero numeros" }, daChave(data).getDate()),
     el("span", { class: "quadro__total numeros" }, atendimentos.length
-      ? [String(atendimentos.length), el("span", { class: "quadro__valor" }, ` · ${formatarMoeda(somaDosValores(atendimentos))}`)] : ""));
+      ? [String(atendimentos.length), temValor(atendimentos)
+        ? el("span", { class: "quadro__valor" }, ` · ${formatarMoeda(somaDosValores(atendimentos))}`) : ""] : ""));
 }
 
 function cabecalhoDoProfissional(id, atendimentos, estreita) {
@@ -406,7 +468,7 @@ function cabecalhoDoProfissional(id, atendimentos, estreita) {
     el("span", { class: "quadro__profissional" },
       el("span", { class: "chip__cor", "data-profissional": indiceProfissional(id) % 4 }), nomeProfissional(id)),
     el("span", { class: "quadro__total numeros" }, atendimentos.length
-      ? `${atendimentos.length} · ${formatarMoeda(somaDosValores(atendimentos))}` : ""));
+      ? `${atendimentos.length}${temValor(atendimentos) ? ` · ${formatarMoeda(somaDosValores(atendimentos))}` : ""}` : ""));
 }
 
 function desenharQuadro() {
@@ -560,30 +622,32 @@ function desenharResumoDaSemana() {
   const diaria = visaoDiaria();
   const dias = diaria ? [visao.dia] : diasDaSemana();
   const atendimentos = dias.flatMap(data => doDia(data).map(agendamento => ({ agendamento, data })));
-  const total = atendimentos.reduce((soma, item) => soma + item.agendamento.preco, 0);
+  const doPeriodo = atendimentos.map(item => item.agendamento);
+  const total = somaDosValores(doPeriodo);
+  const valor = temValor(doPeriodo) ? formatarMoeda(total) : "";
   const conflitos = atendimentos.filter(({ agendamento, data }) =>
     data >= hoje() && conflitoDoAtendimento(estado, agendamento, data)).length;
   const quantos = `${atendimentos.length} ${atendimentos.length === 1 ? "atendimento" : "atendimentos"}`;
 
   const botao = $("#semanaResumo");
-  botao.setAttribute("aria-label", `${quantos} ${diaria ? "no dia" : "na semana"}, ${formatarMoeda(total)}` +
+  botao.setAttribute("aria-label", `${quantos} ${diaria ? "no dia" : "na semana"}${valor ? `, ${valor}` : ""}` +
     (conflitos ? `, ${conflitos} para remarcar` : "") + ". Ver lista");
   botao.replaceChildren(
     icone("lista", "icone resumo-semana__lista"),
     el("strong", {}, atendimentos.length),
     el("span", { class: "resumo-semana__rotulo" }, atendimentos.length === 1 ? " atendimento" : " atendimentos"),
-    atendimentos.length ? el("span", { class: "resumo-semana__valor" }, ` · ${formatarMoeda(total)}`) : "",
+    valor ? el("span", { class: "resumo-semana__valor" }, ` · ${valor}`) : "",
     conflitos ? icone("alerta", "icone icone--alerta") : "",
     icone("seta", "icone suspenso__seta"));
 
   const porDia = dias.map(data => ({ data, itens: doDia(data) })).filter(dia => dia.itens.length);
   $("#listaSemana").replaceChildren(
-    el("p", { class: "lista-semana__total numeros" }, `${quantos} · ${formatarMoeda(total)}`,
+    el("p", { class: "lista-semana__total numeros" }, `${quantos}${valor ? ` · ${valor}` : ""}`,
       conflitos ? el("span", {}, ` · ${conflitos} para remarcar`) : ""),
     ...porDia.map(({ data, itens }) => el("section", { class: "lista-semana__dia" },
       el("h3", { class: "lista-semana__data" },
         capitalizar(formatarData(data, { weekday: "long", day: "numeric", month: "short" })),
-        el("span", { class: "numeros" }, formatarMoeda(somaDosValores(itens)))),
+        temValor(itens) ? el("span", { class: "numeros" }, formatarMoeda(somaDosValores(itens))) : ""),
       el("ul", {}, itens.map(agendamento => itemDaLista(agendamento, data))))),
     porDia.length ? "" : el("p", { class: "lista-semana__vazia" },
       `Nenhum atendimento ${diaria ? "neste dia" : "nesta semana"}. Toque num horário livre da agenda para marcar.`));
@@ -640,15 +704,15 @@ function abrirDetalhe(id, data) {
 
   const cancelar = el("button", { type: "button", class: "botao botao--perigo botao--largo" },
     repete ? "Cancelar só este dia" : "Cancelar atendimento");
-  confirmarNoBotao(cancelar, "Toque de novo para cancelar", () => {
-    if (resultado(cancelarData(id, data), "Atendimento cancelado.")) fecharDetalhe();
+  confirmarNoBotao(cancelar, "Toque de novo para cancelar", async () => {
+    if (await resultado(cancelarData(id, data), "Atendimento cancelado.")) fecharDetalhe();
   });
 
   let encerrar = null;
   if (repete) {
     encerrar = el("button", { type: "button", class: "botao botao--perigo botao--largo" }, "Encerrar repetição a partir deste dia");
-    confirmarNoBotao(encerrar, "Toque de novo para encerrar", () => {
-      if (resultado(encerrarRepeticao(id, data), "Repetição encerrada.")) fecharDetalhe();
+    confirmarNoBotao(encerrar, "Toque de novo para encerrar", async () => {
+      if (await resultado(encerrarRepeticao(id, data), "Repetição encerrada.")) fecharDetalhe();
     });
   }
 
@@ -662,11 +726,11 @@ function abrirDetalhe(id, data) {
     el("dl", { class: "detalhe__lista" },
       [["Serviços", `${nomes} · ${duracao} min`],
         ["Profissional", profissional],
-        ["Valor", formatarMoeda(agendamento.preco)],
+        agendamento.preco != null && ["Valor", formatarMoeda(agendamento.preco)],
         ["WhatsApp", formatarTelefone(agendamento.cliente.telefone)],
         ["Repetição", descreverRepeticao(agendamento.repeticao, agendamento.data)],
         ["Marcado", agendamento.origem === "cliente" ? "Pelo cliente, no site" : "Pelo painel"]
-      ].map(([rotulo, valor]) => el("div", {}, el("dt", {}, rotulo), el("dd", {}, valor)))),
+      ].filter(Boolean).map(([rotulo, valor]) => el("div", {}, el("dt", {}, rotulo), el("dd", {}, valor)))),
     el("div", { class: "detalhe__acoes" },
       el("a", {
         class: "botao botao--destaque botao--largo",
@@ -715,8 +779,13 @@ function painelRecorrencia(agendamento) {
   const confirmar = el("button", {
     type: "button",
     class: "botao botao--destaque botao--largo",
-    onclick: () => {
-      if (resultado(tornarRecorrente(agendamento.id, ler()), "Pronto, o horário agora se repete.", erro)) fecharDetalhe();
+    onclick: async evento => {
+      const botao = evento.currentTarget;
+      if (botao.disabled) return;
+      botao.disabled = true;
+      const pronto = await resultado(tornarRecorrente(agendamento.id, ler()), "Pronto, o horário agora se repete.", erro);
+      botao.disabled = false;
+      if (pronto) fecharDetalhe();
     }
   }, "Confirmar repetição");
 
@@ -847,24 +916,24 @@ formNovo.addEventListener("change", atualizarHorariosNovo);
 
 formNovo.addEventListener("submit", evento => {
   evento.preventDefault();
-  const valores = new FormData(formNovo);
-  const dados = lerFormNovo();
-  const retorno = criarAgendamento({
-    ...dados,
-    nome: valores.get("nome"),
-    telefone: valores.get("telefone"),
-    inicio: valores.get("horario"),
-    origem: "painel"
-  });
-  if (!resultado(retorno, "Horário marcado.", $("#novoErro"))) return;
+  enviando(formNovo, async () => {
+    const valores = new FormData(formNovo);
+    const dados = lerFormNovo();
+    const pedido = criarAgendamento({
+      ...dados,
+      nome: valores.get("nome"),
+      telefone: valores.get("telefone"),
+      inicio: valores.get("horario"),
+      origem: "painel"
+    });
+    if (!(await resultado(pedido, "Horário marcado.", $("#novoErro")))) return;
 
-  $("#janelaNovo").close();
-  irPara(dados.data);
+    $("#janelaNovo").close();
+    irPara(dados.data);
+  });
 });
 
 /* Aviso antes de mudanças que atingem quem já tem horário */
-
-const chaveConflito = item => `${item.agendamento.id}|${item.data}`;
 
 function limparImpacto(form) {
   const caixa = form.querySelector(".impacto");
@@ -875,23 +944,20 @@ function limparImpacto(form) {
   delete botao.dataset.rotulo;
 }
 
-// Simula a mudança e, se ela deixar alguém marcado fora do horário de atendimento,
-// mostra a lista e pede um segundo envio para confirmar. Devolve true quando pode salvar.
-function podeSalvar(form, simular) {
+// Pede ao servidor para simular a mudança (nada é gravado) e, se ela deixar alguém marcado fora do
+// horário de atendimento, mostra a lista e pede um segundo envio para confirmar. true = pode salvar.
+async function podeSalvar(form, simular) {
   if (form.dataset.confirmado) return true;
-  const previa = simular();
-  if (!previa.ok) return true;
-
-  const atuais = new Set(conflitosFuturos(estado).map(chaveConflito));
-  const novos = conflitosFuturos(previa.estado).filter(item => !atuais.has(chaveConflito(item)));
-  if (!novos.length) return true;
+  const previa = await simular();
+  // Se a simulação falhar, o envio de verdade mostra o erro.
+  if (!previa.ok || !previa.conflitos.length) return true;
 
   // Um cliente fixo aparece uma vez só, com a primeira data atingida e quantas vêm depois.
   const porCliente = new Map();
-  for (const item of novos) {
-    const grupo = porCliente.get(item.agendamento.id) ?? { ...item, datas: 0 };
+  for (const item of previa.conflitos) {
+    const grupo = porCliente.get(item.id) ?? { ...item, datas: 0 };
     grupo.datas++;
-    porCliente.set(item.agendamento.id, grupo);
+    porCliente.set(item.id, grupo);
   }
   const grupos = [...porCliente.values()];
 
@@ -900,9 +966,9 @@ function podeSalvar(form, simular) {
   caixa.replaceChildren(
     el("p", { class: "impacto__titulo" }, icone("alerta"),
       `Isso atinge ${grupos.length} ${grupos.length === 1 ? "cliente já marcado" : "clientes já marcados"}:`),
-    el("ul", { class: "impacto__lista numeros" }, grupos.slice(0, 5).map(({ agendamento, data, datas }) => el("li", {},
-      `${agendamento.cliente.nome} (${nomeProfissional(agendamento.profissionalId)}) · ` +
-      `${formatarData(data, { weekday: "short", day: "2-digit", month: "2-digit" })} às ${agendamento.inicio}` +
+    el("ul", { class: "impacto__lista numeros" }, grupos.slice(0, 5).map(({ cliente, profissionalId, data, inicio, datas }) => el("li", {},
+      `${cliente} (${nomeProfissional(profissionalId)}) · ` +
+      `${formatarData(data, { weekday: "short", day: "2-digit", month: "2-digit" })} às ${inicio}` +
       (datas > 1 ? ` e mais ${datas - 1} ${datas === 2 ? "data" : "datas"}` : "")))),
     grupos.length > 5 ? el("p", {}, `e mais ${grupos.length - 5} clientes.`) : "",
     el("p", {}, "Se salvar, esses horários continuam na agenda com um alerta, para você avisar o cliente e remarcar ou cancelar."),
@@ -973,11 +1039,14 @@ $("#formExpediente").addEventListener("submit", evento => {
     } : null;
   }
   const id = visao.profissionalExpediente;
-  if (!podeSalvar(evento.currentTarget, () => salvarExpediente(id, dias, { simular: true }))) return;
-  if (resultado(salvarExpediente(id, dias), `Expediente de ${nomeProfissional(id)} salvo.`, $("#expedienteErro"))) {
-    desenharExpediente();
-    desenharAgenda();
-  }
+  const form = evento.currentTarget;
+  enviando(form, async () => {
+    if (!(await podeSalvar(form, () => salvarExpediente(id, dias, { simular: true })))) return;
+    if (await resultado(salvarExpediente(id, dias), `Expediente de ${nomeProfissional(id)} salvo.`, $("#expedienteErro"))) {
+      desenharExpediente();
+      desenharAgenda();
+    }
+  });
 });
 
 /* Ausências e bloqueios */
@@ -997,7 +1066,7 @@ function desenharAusencias() {
   $("#listaAusencias").replaceChildren(...futuras.map(item => registro(
     nomeProfissional(item.profissionalId),
     `${item.inicio === item.fim ? formatarData(item.inicio) : `${formatarData(item.inicio)} a ${formatarData(item.fim)}`} · ${horasTexto(item)}`,
-    () => resultado(removerAusencia(item.id), "Ausência removida.") && atualizarTudo())));
+    async () => (await resultado(removerAusencia(item.id), "Ausência removida.")) && atualizarTudo())));
 }
 
 function desenharBloqueios() {
@@ -1005,7 +1074,7 @@ function desenharBloqueios() {
   $("#listaBloqueios").replaceChildren(...futuros.map(item => registro(
     item.motivo,
     `${formatarData(item.data, { weekday: "short", day: "2-digit", month: "2-digit" })} · ${horasTexto(item)}`,
-    () => resultado(removerBloqueio(item.id), "Bloqueio removido.") && atualizarTudo())));
+    async () => (await resultado(removerBloqueio(item.id), "Bloqueio removido.")) && atualizarTudo())));
 }
 
 function ligarFormulario(seletor, salvar, mensagem) {
@@ -1013,12 +1082,14 @@ function ligarFormulario(seletor, salvar, mensagem) {
   form.addEventListener("submit", evento => {
     evento.preventDefault();
     const valores = Object.fromEntries(new FormData(form));
-    if (!podeSalvar(form, () => salvar(valores, { simular: true }))) return;
-    if (resultado(salvar(valores), mensagem, form.querySelector(".campo__erro"))) {
-      form.reset();
-      limparImpacto(form);
-      atualizarTudo();
-    }
+    enviando(form, async () => {
+      if (!(await podeSalvar(form, () => salvar(valores, { simular: true })))) return;
+      if (await resultado(salvar(valores), mensagem, form.querySelector(".campo__erro"))) {
+        form.reset();
+        limparImpacto(form);
+        atualizarTudo();
+      }
+    });
   });
 }
 
@@ -1080,18 +1151,21 @@ formServico.addEventListener("submit", evento => {
     duracao: valores.get("duracao"),
     icone: valores.get("icone")
   };
-  const retorno = servicoEditado ? atualizarServico(servicoEditado, dados) : criarServico(dados);
-  if (!resultado(retorno, servicoEditado ? "Serviço atualizado." : "Serviço adicionado.", formServico.querySelector(".campo__erro"))) return;
-  sairDaEdicaoServico();
-  desenharServicosNovo();
-  atualizarHorariosNovo();
-  desenharAgenda();
+  enviando(formServico, async () => {
+    const pedido = servicoEditado ? atualizarServico(servicoEditado, dados) : criarServico(dados);
+    const mensagem = servicoEditado ? "Serviço atualizado." : "Serviço adicionado.";
+    if (!(await resultado(pedido, mensagem, formServico.querySelector(".campo__erro")))) return;
+    sairDaEdicaoServico();
+    desenharServicosNovo();
+    atualizarHorariosNovo();
+    desenharAgenda();
+  });
 });
 
 function desenharServicos() {
   $("#listaServicos").replaceChildren(...servicosAtivos(estado).map(servico => {
-    const item = registro(servico.nome, `${servico.duracao} min · ${formatarMoeda(servico.preco)}`, () => {
-      if (!resultado(removerServico(servico.id), "Serviço removido.")) return;
+    const item = registro(servico.nome, `${servico.duracao} min · ${formatarMoeda(servico.preco)}`, async () => {
+      if (!(await resultado(removerServico(servico.id), "Serviço removido."))) return;
       if (servicoEditado === servico.id) sairDaEdicaoServico();
       else desenharServicos();
       desenharServicosNovo();
@@ -1188,9 +1262,13 @@ $("#produtoFoto").addEventListener("change", evento => {
   if (arquivo) mostrarPrevia(URL.createObjectURL(arquivo));
 });
 
-formProduto.addEventListener("submit", async evento => {
+formProduto.addEventListener("submit", evento => {
   evento.preventDefault();
-  const form = evento.currentTarget;
+  enviando(evento.currentTarget, salvarProduto);
+});
+
+async function salvarProduto() {
+  const form = formProduto;
   const erro = form.querySelector(".campo__erro");
   const valores = new FormData(form);
   const arquivo = valores.get("foto");
@@ -1215,11 +1293,11 @@ formProduto.addEventListener("submit", async evento => {
     descricao: valores.get("descricao"),
     foto
   };
-  const retorno = edicao.id ? atualizarProduto(edicao.id, dados) : criarProduto(dados);
-  if (resultado(retorno, edicao.id ? "Produto atualizado na loja." : "Produto adicionado à loja.", erro)) {
+  const pedido = edicao.id ? atualizarProduto(edicao.id, dados) : criarProduto(dados);
+  if (await resultado(pedido, edicao.id ? "Produto atualizado na loja." : "Produto adicionado à loja.", erro)) {
     sairDaEdicao();
   }
-});
+}
 
 function desenharProdutos() {
   const lista = $("#listaProdutos");
@@ -1229,8 +1307,8 @@ function desenharProdutos() {
     return;
   }
   lista.replaceChildren(...estado.produtos.map(produto => {
-    const item = registro(produto.nome, formatarMoeda(produto.preco), () => {
-      if (!resultado(removerProduto(produto.id), "Produto removido da loja.")) return;
+    const item = registro(produto.nome, formatarMoeda(produto.preco), async () => {
+      if (!(await resultado(removerProduto(produto.id), "Produto removido da loja."))) return;
       if (edicao.id === produto.id) sairDaEdicao();
       else desenharProdutos();
     });
@@ -1248,18 +1326,23 @@ function desenharProdutos() {
   }));
 }
 
-/* Dados de teste */
+/* Sessão e dados de teste */
 
-confirmarNoBotao($("#apagarTudo"), "Toque de novo para apagar tudo", () => {
-  apagarTudo();
-  estado = carregar();
-  atualizarTudo();
-  avisar("Dados de teste apagados.");
+$("#sessaoNome").textContent = estado.eu.nome;
+$("#sair").addEventListener("click", async () => {
+  await sair();
+  location.reload();
 });
 
-confirmarNoBotao($("#gerarExemplo"), "Toque de novo: troca os atendimentos atuais", () => {
-  const retorno = carregarExemplo(gerarExemplo(carregar()));
-  if (!resultado(retorno, `${retorno.total} atendimentos de exemplo gerados (agosto a outubro e a semana atual lotada).`)) return;
+$("#ferramentasDeTeste").hidden = !estado.ferramentasDeTeste;
+
+confirmarNoBotao($("#apagarTudo"), "Toque de novo: apaga atendimentos, ausências e bloqueios", async () => {
+  if (await resultado(apagarDadosDeTeste(), "Dados de teste apagados.")) atualizarTudo();
+});
+
+confirmarNoBotao($("#gerarExemplo"), "Toque de novo: troca os atendimentos atuais", async () => {
+  const mensagem = retorno => `${retorno.total} atendimentos de exemplo gerados (agosto a outubro e a semana atual lotada).`;
+  if (!(await resultado(carregarExemplo(gerarExemplo(estado)), mensagem))) return;
   irPara(hoje());
   atualizarTudo();
 });
@@ -1290,8 +1373,8 @@ $("#ausenciaProfissional").replaceChildren(...opcoesProfissionais());
 atualizarTudo();
 abrirAba(location.hash.slice(1));
 
-// Um cliente marcou pelo site em outra aba: a agenda se atualiza sozinha.
-aoMudar(novo => {
+// Um cliente marcou pelo site, ou outro barbeiro mexeu no painel: a agenda se atualiza sozinha.
+aoMudar(carregar, novo => {
   estado = novo;
   desenharAgenda();
   desenharServicos();

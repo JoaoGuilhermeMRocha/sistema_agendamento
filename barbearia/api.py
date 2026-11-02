@@ -74,6 +74,11 @@ def api(aberta=False, **metodos):
     return rota
 
 
+def falha_de_csrf(request, reason=""):
+    """Pedido sem o código do cookie de CSRF (CSRF_FAILURE_VIEW): responde no formato da API."""
+    return JsonResponse({"ok": False, "erro": "Sua sessão expirou. Recarregue a página e tente de novo."}, status=403)
+
+
 def so_em_teste(funcao):
     """Ferramentas que apagam dados existem só no computador (DJANGO_DEBUG=1)."""
     @wraps(funcao)
@@ -241,6 +246,8 @@ def _estado(request, corpo):
     agendamentos = Agendamento.objects.prefetch_related("servicos", "excecoes")
     return {
         "hoje": timezone.localdate().isoformat(),
+        # Os botões "Gerar dados de exemplo" e "Apagar dados de teste" só aparecem no computador.
+        "ferramentasDeTeste": settings.DEBUG,
         "profissionais": [profissional_json(item) for item in Profissional.objects.filter(ativo=True)],
         "eu": eu_json(request.user),
         "agendamentos": [agendamento_json(item, ve_valor(request, item.profissional_id)) for item in agendamentos],
