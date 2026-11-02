@@ -21,4 +21,14 @@ Cada etapa termina funcionando e com um commit.
 5. [x] **Login no painel:** uma conta por barbeiro. Cada um vê só os próprios valores, inclusive o Santiago (ver Pendências no `CLAUDE.md`). Todos podem alterar tudo. No servidor: rotas de entrar e sair, bloqueio depois de 5 senhas erradas e o valor dos colegas escondido.
 6. [x] **Front ligado à API:** tela de entrar no `/barbeiros`, valores dos colegas escondidos na agenda e relatório travado no próprio barbeiro. O `dados.js` passa a usar `fetch` e as chamadas viram assíncronas. O `/agendar` usa a rota de horários livres. "Gerar dados de exemplo" e "Apagar dados de teste" ficam só no ambiente de desenvolvimento.
 7. [x] **Fotos e LGPD:** foto de produto e perfil dos barbeiros (nome, descrição e foto) pelo painel, salvos como arquivo. Página `/privacidade`, aviso com link no agendamento, ação de apagar cliente no admin e prazo de guarda de 2 anos.
-8. [ ] **Deploy:** PostgreSQL, Gunicorn e Caddy na VPS (o Caddy entrega `web/` e `midia/`), backup diário do banco e da pasta `midia/` fora do servidor, o `anonimizar_antigos` rodando todo dia e um script para criar um cliente novo. Limite de pedidos por IP no agendamento público, contra robô marcando horário falso.
+8. [x] **Deploy:** PostgreSQL, Gunicorn e Caddy na VPS (o Caddy entrega `web/` e `midia/`), backup diário do banco e da pasta `midia/` fora do servidor, o `anonimizar_antigos` rodando todo dia e um script para criar um cliente novo. Limite de pedidos por IP no agendamento público, contra robô marcando horário falso.
+
+**No ar desde 02/11/2026** em https://santiago.arsystems.com.br, com backup diário na VPS e no Cloudflare R2 (restauração testada) e monitoramento pelo UptimeRobot.
+
+## Depois da entrega
+
+Pendências que ficaram para depois estão no fim do `CLAUDE.md`. As principais:
+- Página de venda em `arsystems.com.br`, para as próximas barbearias.
+- Lembrete automático no WhatsApp e o cliente desmarcar o próprio horário.
+- Revisão da política de privacidade por um advogado antes de vender em escala.
+

@@ -198,7 +198,9 @@ Comandos, sempre com `sudo` na VPS:
 | Comando do Django | `sudo /srv/arsystems/deploy/manage.sh santiago <comando>` (ex.: `createsuperuser`) |
 | Backup agora | `sudo systemctl start backup@santiago` |
 | Ver o que está no R2 | `sudo rclone --config /etc/arsystems/rclone.conf ls fora:arsystems-backups/santiago` |
-| Restaurar o banco | parar o site (`sudo systemctl stop agenda@santiago`), copiar o `.dump` para `/tmp` com dono `postgres`, `sudo -u postgres pg_restore --clean --if-exists --no-owner --role=santiago -d santiago /tmp/banco.dump` e ligar de novo. Fotos: `tar -xzf midia-AAAA-MM-DD.tar.gz -C /srv/clientes/santiago` |
+| Restaurar o banco | parar o site (`sudo systemctl stop agenda@santiago`), copiar o `.dump` com `sudo install -o postgres -m 600 <arquivo> /tmp/banco.dump`, `sudo -u postgres pg_restore --clean --if-exists --no-owner --role=santiago -d santiago /tmp/banco.dump` e ligar de novo. Fotos: `tar -xzf midia-AAAA-MM-DD.tar.gz -C /srv/clientes/santiago`. Testado em 02/11/2026 num banco à parte |
+
+**Pegadinha do `sudo` com `*`**: as pastas `/srv/clientes/<slug>` são fechadas (`750`), e o `*` é expandido pelo shell do `joao` antes de o `sudo` entrar. Para listar ou escolher arquivos lá dentro, use `sudo sh -c 'ls -t /srv/clientes/santiago/backups/banco-*.dump | head -1'`.
 
 Em produção (`DJANGO_DEBUG` vazio), o `settings.py` liga HTTPS obrigatório, cookies seguros, HSTS e `CSRF_TRUSTED_ORIGINS` a partir de `DJANGO_HOSTS`. O cache fica no banco (`createcachetable`) para as contagens valerem nos dois processos do Gunicorn. O agendamento público aceita 10 por IP por hora (`AGENDAMENTOS_POR_IP`).
 
