@@ -15,7 +15,7 @@ O Santiago fechou o sistema em 02/11/2026. Este é o caminho do protótipo (`loc
 Cada etapa termina funcionando e com um commit.
 
 1. [x] **Ambiente local:** Python 3.12 com `uv` (a mesma versão da VPS) e PostgreSQL 16 num container `podman`.
-2. [ ] **Projeto Django e modelos:** agendamentos, serviços, produtos, expedientes, ausências e bloqueios viram tabelas. Os profissionais saem do `config.js` para o banco. O admin do Django fica disponível para o João.
+2. [x] **Projeto Django e modelos:** agendamentos, serviços, produtos, expedientes, ausências e bloqueios viram tabelas. Os profissionais saem do `config.js` para o banco. O admin do Django fica disponível para o João.
 3. [ ] **Regras da agenda em Python:** disponibilidade, recorrência e conflitos (tradução do `agenda.js`), com testes automáticos.
 4. [ ] **API:** rotas JSON que o site chama, com validação no servidor e trava contra reserva dupla no banco.
 5. [ ] **Login no painel:** uma conta por barbeiro. Cada um vê só os próprios valores, inclusive o Santiago (ver Pendências no `CLAUDE.md`).

@@ -6,17 +6,21 @@ Responda ao usuário em português do Brasil, num tom direto e informal.
 
 ## Como rodar
 
+O sistema está migrando do protótipo (`localStorage`) para Django + PostgreSQL. O caminho e o andamento estão no `PLANO.md`.
+
 ```bash
-python server.py
+podman start agenda-postgres          # PostgreSQL 16 local, num container
+uv run python manage.py runserver
 ```
 
 - `http://127.0.0.1:8000/agendar`: área do cliente para marcar horário
 - `http://127.0.0.1:8000/loja`: vitrine de produtos
 - `http://127.0.0.1:8000/barbeiros`: painel dos barbeiros
+- `http://127.0.0.1:8000/admin/`: admin do Django (só do João)
 
-Não há build, dependências nem framework. É HTML, CSS e JavaScript puro, com módulos ES. Python é usado só para o servidor estático (biblioteca padrão).
+O front é HTML, CSS e JavaScript puro, com módulos ES, sem build, e fica em `web/`. O backend é Python 3.12 (preso pelo `uv`, igual à VPS) com Django e PostgreSQL. Senhas e banco vêm do `.env` (modelo em `.env.exemplo`), que nunca vai para o Git.
 
-O `server.py` entrega uma **lista fechada** de arquivos (`PAGES` e `ASSETS`), mais qualquer imagem `.svg`, `.jpg`, `.png` ou `.webp` que esteja direto em `imagens/`. **Arquivo novo de CSS ou JS precisa entrar em `ASSETS`**, senão dá 404. Depois de mudar o `server.py`, reinicie o servidor.
+No computador (`DJANGO_DEBUG=1`), o Django entrega as páginas e qualquer arquivo de `web/` com extensão, inclusive os de `web/imagens/`. Na VPS, quem entrega `web/` é o Caddy.
 
 ## Regras de navegação
 
@@ -25,6 +29,8 @@ O `server.py` entrega uma **lista fechada** de arquivos (`PAGES` e `ASSETS`), ma
 - Ainda **não há login**. Ele entra junto com o backend.
 
 ## Arquivos
+
+Os arquivos do front abaixo ficam em `web/`.
 
 | Arquivo | Papel |
 | --- | --- |
@@ -39,8 +45,16 @@ O `server.py` entrega uma **lista fechada** de arquivos (`PAGES` e `ASSETS`), ma
 | `relatorios.js`, `relatorios.css` | Aba Relatórios do painel: filtros, indicadores, agrupamento, tabela, CSV e a versão impressa (PDF) |
 | `exemplo.js` | Gerador de dados de exemplo (botão "Gerar dados de exemplo" no rodapé do painel): 150 atendimentos em agosto, 150 em setembro e 100 em outubro do ano atual, com 4 séries recorrentes, e a **semana atual lotada** (todo horário livre de cada profissional ganha um atendimento que caiba no espaço). Respeita as regras da agenda e é determinístico (semente fixa). As metas ficam em `METAS` |
 | `graficos.js` | Gráficos em SVG puro (colunas, barras, linha e rosca), com dica no mouse, toque e teclado |
-| `server.py` | Servidor estático com lista fechada de arquivos |
 | `referencias/` | Material de referência da Santiago (logo, posts e fotos do salão). Não é servido nem usado pelo sistema |
+
+Backend, na raiz:
+
+| Arquivo | Papel |
+| --- | --- |
+| `arsystems/` | Projeto Django: `settings.py` (lê o `.env`) e `urls.py` (páginas, admin e, no computador, os arquivos de `web/`) |
+| `barbearia/` | O app: `models.py` (tabelas, com `CheckConstraint` garantindo as regras no banco), `admin.py` e `views.py` |
+| `clientes/<slug>/dados_iniciais.json` | Dados iniciais de cada barbearia (profissionais, expedientes, serviços e produtos), carregados com `manage.py loaddata` |
+| `pyproject.toml`, `uv.lock`, `.python-version` | Dependências e versão do Python, gerenciadas pelo `uv` |
 
 As páginas preenchem nome, endereço e contatos a partir do `config.js` (`data-marca="chave"`, `data-link="whatsapp|instagram|mapa"`). O endereço abre o Google Maps: usa `config.mapa` se preenchido, senão busca pelo endereço. O texto escrito no HTML é só um valor provisório.
 
@@ -50,6 +64,7 @@ As páginas preenchem nome, endereço e contatos a partir do `config.js` (`data-
 2. Editar `tema.css`: fontes, cores e caminhos das imagens.
 3. Trocar os arquivos de `imagens/` e o `favicon.svg`.
 4. Ajustar o `<meta name="theme-color">` dos três HTML para a cor de fundo do tema.
+5. Criar `clientes/<slug>/dados_iniciais.json` com profissionais, expedientes, serviços e produtos.
 
 Não espalhe dado de cliente pelo código: o que for específico de uma barbearia vai para `config.js` ou `tema.css`.
 
