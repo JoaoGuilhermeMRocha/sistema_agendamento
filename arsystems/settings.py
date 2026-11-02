@@ -101,6 +101,15 @@ TIME_ZONE = os.environ.get("DJANGO_FUSO", "America/Sao_Paulo")
 USE_I18N = True
 USE_TZ = True
 
+# Parâmetros da agenda. Os mesmos de config.agenda em web/config.js: mudou um, mude o outro.
+AGENDA = {
+    "intervalo_minutos": 15,
+    "dias_para_agendar": 14,
+    # Até onde conferir conflitos de uma repetição sem data para terminar.
+    "horizonte_recorrencia_dias": 180,
+    "max_atendimentos_repetidos": 52,
+}
+
 
 # Arquivos do admin do Django (o site em si fica em web/).
 STATIC_URL = "/static/"

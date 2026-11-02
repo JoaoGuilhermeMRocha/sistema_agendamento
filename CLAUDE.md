@@ -53,6 +53,8 @@ Backend, na raiz:
 | --- | --- |
 | `arsystems/` | Projeto Django: `settings.py` (lê o `.env`) e `urls.py` (páginas, admin e, no computador, os arquivos de `web/`) |
 | `barbearia/` | O app: `models.py` (tabelas, com `CheckConstraint` garantindo as regras no banco), `admin.py` e `views.py` |
+| `barbearia/agenda.py` | **As regras da agenda em Python** (tradução do `agenda.js`), em funções puras sobre um `Estado` montado por `carregar_estado()`. É o servidor que decide; o `agenda.js` só desenha o painel. **Mudou uma regra num, mude no outro** |
+| `barbearia/tests/` | Testes automáticos (`uv run python manage.py test barbearia`). O "agora" dos testes é fixo (segunda, 02/11/2026, 10h) |
 | `clientes/<slug>/dados_iniciais.json` | Dados iniciais de cada barbearia (profissionais, expedientes, serviços e produtos), carregados com `manage.py loaddata` |
 | `pyproject.toml`, `uv.lock`, `.python-version` | Dependências e versão do Python, gerenciadas pelo `uv` |
 
@@ -101,7 +103,9 @@ Não espalhe dado de cliente pelo código: o que for específico de uma barbeari
   - **PDF**: `window.print()` (o barbeiro escolhe "Salvar como PDF"). O `@media print` do `relatorios.css` mostra só o relatório, com cabeçalho da barbearia e filtros; as cores de papel ficam no `@media print` do `tema.css`.
 - O painel atualiza sozinho quando outra aba muda os dados (evento `storage`).
 
-## Regras de negócio (em `agenda.js`)
+## Regras de negócio (em `agenda.js` e `barbearia/agenda.py`)
+
+Os nomes em Python são os mesmos em `snake_case` (`profissionalLivre` → `profissional_livre`). Lá, horas são minutos (int), datas são `date`, e o "agora" vem no `Estado`.
 
 - **Disponibilidade** (`profissionalLivre`): o horário cabe no expediente do dia, não pega a pausa, não está no passado e não bate com bloqueio, ausência ou outro atendimento. `motivoIndisponivel` devolve o motivo sem considerar outros clientes.
 - **Sem preferência** (`escolherProfissional`): entre os livres em **todas** as datas da série, escolhe o que tem menos atendimentos no primeiro dia.
@@ -143,7 +147,7 @@ Datas são strings `AAAA-MM-DD` e horas são `HH:MM`. Telefones são guardados s
 
 ## Como testar
 
-Não há suíte de testes automatizados. Para validar:
+As regras da agenda em Python têm testes automáticos: `uv run python manage.py test barbearia` (precisa do container do Postgres ligado, porque um dos testes usa o banco). O front ainda não tem. Para validar o front:
 - Abra as três páginas **no mesmo navegador**: os dados são do `localStorage`.
 - Em sessões anteriores os testes foram feitos com o Brave em modo headless via DevTools Protocol, em 360, 390 e 1280px, conferindo erros de console. O "Apagar dados de teste" do painel zera o estado, e o "Gerar dados de exemplo" troca os atendimentos por uma base de agosto a outubro, com a semana atual lotada (bom para testar agenda e relatórios).
 
