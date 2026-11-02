@@ -7,13 +7,14 @@ nossas páginas) e recusa com uma mensagem para o usuário levantando Recusado.
 import base64
 import binascii
 import re
-from datetime import date, time
+from datetime import date, time, timedelta
 from decimal import Decimal, InvalidOperation
 from io import BytesIO
 
 from django.conf import settings
 from django.core.files.base import ContentFile
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 from PIL import Image, UnidentifiedImageError
 
@@ -363,7 +364,7 @@ def remover_servico(id):
 FOTO_MAXIMA = 3 * 1024 * 1024  # bytes; o painel já reduz a foto para 900px antes de mandar
 
 
-def ler_foto(endereco):
+def ler_foto(endereco, nome="produto"):
     """Foto em data URL (data:image/jpeg;base64,...) -> arquivo pronto para o ImageField.
 
     Abre com o Pillow para garantir que é mesmo uma imagem, e não outra coisa com a extensão trocada.
@@ -381,7 +382,7 @@ def ler_foto(endereco):
         Image.open(BytesIO(bruto)).verify()
     except (UnidentifiedImageError, OSError, SyntaxError):
         raise Recusado("Não deu para ler essa foto.") from None
-    return ContentFile(bruto, name=f"produto.{'jpg' if achado[1] == 'jpeg' else achado[1]}")
+    return ContentFile(bruto, name=f"{nome}.{'jpg' if achado[1] == 'jpeg' else achado[1]}")
 
 def _campos_do_produto(dados):
     nome = str(dados.get("nome") or "").strip()
@@ -401,16 +402,21 @@ def criar_produto(dados):
     return produto
 
 
+def _trocar_foto(objeto, foto, nome):
+    """foto: data URL troca, vazio/None tira. Apaga o arquivo antigo do disco."""
+    nova = ler_foto(foto, nome) if foto else None
+    if objeto.foto:
+        objeto.foto.delete(save=False)
+    objeto.foto = nova
+
+
 def atualizar_produto(id, dados):
     """foto: ausente mantém a atual, null remove, data URL troca."""
     produto = _buscar(Produto, id, "Esse produto não existe mais.")
     for campo, valor in _campos_do_produto(dados).items():
         setattr(produto, campo, valor)
     if "foto" in dados:
-        nova = ler_foto(dados["foto"]) if dados["foto"] else None
-        if produto.foto:
-            produto.foto.delete(save=False)
-        produto.foto = nova
+        _trocar_foto(produto, dados["foto"], "produto")
     produto.save()
     return produto
 
@@ -421,6 +427,74 @@ def remover_produto(id):
         if produto.foto:
             produto.foto.delete(save=False)
         produto.delete()
+
+
+# Profissionais (incluir e tirar barbeiro, e criar o login, fica no admin)
+
+def atualizar_profissional(id, dados):
+    """Nome, descrição e foto que aparecem no /agendar. foto: ausente mantém, null tira, data URL troca."""
+    profissional = _buscar(Profissional, id, "Profissional inválido.")
+    nome = str(dados.get("nome") or "").strip()
+    if len(nome) < 2:
+        raise Recusado("Informe o nome do profissional.")
+    profissional.nome = nome[:40]
+    profissional.descricao = str(dados.get("descricao") or "").strip()[:80]
+    if "foto" in dados:
+        _trocar_foto(profissional, dados["foto"], profissional.id)
+    profissional.save()
+    return profissional
+
+
+# LGPD
+
+CLIENTE_REMOVIDO = "Cliente removido"
+TELEFONE_REMOVIDO = "0000000000"
+
+
+def anonimizar_cliente(telefone):
+    """Direito de apagar (LGPD, art. 18): tira o nome e o WhatsApp do cliente de todos os atendimentos.
+
+    Os atendimentos que já aconteceram continuam nos relatórios, sem identificação. Os que ainda
+    vão acontecer são cancelados, porque não dá mais para avisar ninguém.
+    """
+    telefone = so_digitos(telefone)
+    if not re.fullmatch(r"\d{10,11}", telefone) or telefone == TELEFONE_REMOVIDO:
+        raise Recusado("Informe o WhatsApp do cliente, com DDD.")
+    hoje = timezone.localdate()
+    with transaction.atomic():
+        do_cliente = Agendamento.objects.filter(cliente_telefone=telefone)
+        do_cliente.filter(frequencia="nenhuma", data__gte=hoje).delete()
+        do_cliente.exclude(frequencia="nenhuma").filter(data__gte=hoje).delete()
+        do_cliente.exclude(frequencia="nenhuma").filter(Q(ate__isnull=True) | Q(ate__gt=hoje)).update(ate=hoje)
+        return do_cliente.update(cliente_nome=CLIENTE_REMOVIDO, cliente_telefone=TELEFONE_REMOVIDO)
+
+
+def _ultima_data(agendamento):
+    """Último dia em que o atendimento acontece (ou None, se a série não tem fim)."""
+    if agendamento.frequencia == "nenhuma":
+        return agendamento.data
+    fim_da_serie = (agenda.datas_da_serie(agendamento.data, agendamento.frequencia, agendamento.vezes)[-1]
+                    if agendamento.vezes else None)
+    limites = [data for data in (fim_da_serie, agendamento.ate) if data]
+    return min(limites) if limites else None
+
+
+def anonimizar_antigos(dias=None):
+    """Prazo de guarda (LGPD): tira nome e WhatsApp de quem não tem atendimento há mais de `dias`.
+
+    Conta pelo cliente (telefone), não pelo atendimento: o cliente fiel que voltou mês passado
+    continua com o histórico inteiro.
+    """
+    dias = settings.LGPD_GUARDA_DIAS if dias is None else dias
+    limite = timezone.localdate() - timedelta(days=dias)
+    ultima_por_cliente = {}
+    for agendamento in Agendamento.objects.exclude(cliente_telefone=TELEFONE_REMOVIDO):
+        ultima = _ultima_data(agendamento)
+        anterior = ultima_por_cliente.get(agendamento.cliente_telefone, date.min)
+        ultima_por_cliente[agendamento.cliente_telefone] = date.max if ultima is None else max(anterior, ultima)
+    antigos = [telefone for telefone, ultima in ultima_por_cliente.items() if ultima < limite]
+    return Agendamento.objects.filter(cliente_telefone__in=antigos).update(
+        cliente_nome=CLIENTE_REMOVIDO, cliente_telefone=TELEFONE_REMOVIDO)
 
 
 # Ferramentas de teste (só com DJANGO_DEBUG=1)

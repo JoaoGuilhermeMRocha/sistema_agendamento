@@ -123,6 +123,37 @@
 
       <details class="cartao cartao--recolhivel">
         <summary class="cartao__cabeca">
+          <h2 class="cartao__titulo">Perfil no agendamento</h2>
+          <span data-icone="seta" class="icone cartao__seta"></span>
+        </summary>
+        <div class="cartao__corpo">
+          <p class="cartao__texto">Nome, descrição e foto que o cliente vê na hora de escolher o profissional.</p>
+          <div id="profPerfil" class="chips" role="group" aria-label="Profissional"></div>
+          <form id="formPerfil" class="formulario" novalidate>
+            <label class="campo">
+              <span class="campo__rotulo">Nome</span>
+              <input name="nome" class="entrada" maxlength="40" required>
+            </label>
+            <label class="campo">
+              <span class="campo__rotulo">Descrição <small>(opcional)</small></span>
+              <input name="descricao" class="entrada" maxlength="80" placeholder="Ex.: Especialista em barba">
+            </label>
+            <div class="foto-linha">
+              <label class="foto-campo">
+                <input name="foto" id="perfilFoto" type="file" accept="image/jpeg,image/png,image/webp">
+                <img id="perfilPrevia" class="foto-campo__previa foto-campo__previa--redonda" alt="" hidden>
+                <span class="foto-campo__texto"><strong id="perfilFotoTexto">Adicionar foto</strong><small>Com o rosto no centro</small></span>
+              </label>
+              <button id="removerFotoPerfil" class="botao botao--perigo botao--pequeno" type="button" hidden>Tirar foto</button>
+            </div>
+            <p class="campo__erro" role="alert"></p>
+            <button id="salvarPerfil" class="botao botao--enfase botao--largo" type="submit">Salvar perfil</button>
+          </form>
+        </div>
+      </details>
+
+      <details class="cartao cartao--recolhivel">
+        <summary class="cartao__cabeca">
           <h2 class="cartao__titulo">Folgas e ausências</h2>
           <span data-icone="seta" class="icone cartao__seta"></span>
         </summary>

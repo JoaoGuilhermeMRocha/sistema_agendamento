@@ -16,6 +16,7 @@ uv run python manage.py runserver
 - `http://127.0.0.1:8000/agendar`: área do cliente para marcar horário
 - `http://127.0.0.1:8000/loja`: vitrine de produtos
 - `http://127.0.0.1:8000/barbeiros`: painel dos barbeiros
+- `http://127.0.0.1:8000/privacidade`: política de privacidade (pública)
 - `http://127.0.0.1:8000/admin/`: admin do Django (só do João)
 
 O front é HTML, CSS e JavaScript puro, com módulos ES, sem build, e fica em `web/`. O backend é Python 3.12 (preso pelo `uv`, igual à VPS) com Django e PostgreSQL. Senhas e banco vêm do `.env` (modelo em `.env.exemplo`), que nunca vai para o Git.
@@ -24,7 +25,7 @@ No computador (`DJANGO_DEBUG=1`), o Django entrega as páginas e qualquer arquiv
 
 ## Regras de navegação
 
-- `/agendar` e `/loja` são públicas e linkam uma para a outra.
+- `/agendar`, `/loja` e `/privacidade` são públicas. Agendar e loja linkam uma para a outra, e as três têm o link da política no rodapé.
 - `/barbeiros` é a área administrativa. Ela linka para as páginas públicas, mas **nenhuma página pública pode linkar para o painel**. O painel tem `noindex` (meta e cabeçalho `X-Robots-Tag`).
 - **Login**: o painel exige login (usuário do Django ligado ao barbeiro em `Profissional.usuario`, criado pelo admin). Sem login, o `/barbeiros` mostra a tela de entrar (`#entrar`, com `body[data-entrar]` escondendo abas e painel), e o `barbeiros.js` só continua depois que o login dá certo (`await carregarPainel()` no topo do módulo). "Sair" fica no rodapé. **Todos os barbeiros podem alterar tudo** (decisão do João); a única restrição é o valor: cada um vê só o dos próprios atendimentos.
 
@@ -41,7 +42,7 @@ Os arquivos do front abaixo ficam em `web/`.
 | `dados.js` | **Camada de dados**: as chamadas à API (`fetch` com o cabeçalho de CSRF). Toda função devolve uma Promise de `{ ok: true, ... }` ou `{ ok: false, erro, status }` e nunca lança erro (sem internet também vira `{ ok: false }`). `aoMudar(buscar, callback)` confere a cada 30 s e quando a aba volta a aparecer |
 | `ui.js` | Peças de interface compartilhadas: `el()`, ícones SVG, `preencherMarca()`, máscara de telefone, links de WhatsApp e Google Maps, aviso flutuante e confirmação com dois toques |
 | `base.css` | Base comum: reset, cabeçalho, botões, campos, chips, folha (`<dialog>`) e ornamentos (`.filete`, `.faixa`, `.arabescos`, `.xadrez`, `.capitone`) |
-| `agendar.*`, `loja.*`, `barbeiros.*` | HTML, CSS e JS de cada página |
+| `agendar.*`, `loja.*`, `barbeiros.*`, `privacidade.*` | HTML, CSS e JS de cada página. O texto da política (`privacidade.html`) fala do prazo de guarda: mudou `LGPD_GUARDA_DIAS`, mude o texto |
 | `relatorios.js`, `relatorios.css` | Aba Relatórios do painel: filtros, indicadores, agrupamento, tabela, CSV e a versão impressa (PDF) |
 | `exemplo.js` | Gerador de dados de exemplo (botão "Gerar dados de exemplo" no rodapé do painel, só com `DJANGO_DEBUG=1`; os serviços são achados pelo símbolo, porque os ids vêm do banco): 150 atendimentos em agosto, 150 em setembro e 100 em outubro do ano atual, com 4 séries recorrentes, e a **semana atual lotada** (todo horário livre de cada profissional ganha um atendimento que caiba no espaço). Respeita as regras da agenda e é determinístico (semente fixa). As metas ficam em `METAS` |
 | `graficos.js` | Gráficos em SVG puro (colunas, barras, linha e rosca), com dica no mouse, toque e teclado |
@@ -56,6 +57,7 @@ Backend, na raiz:
 | `barbearia/agenda.py` | **As regras da agenda em Python** (tradução do `agenda.js`), em funções puras sobre um `Estado` montado por `carregar_estado()`. É o servidor que decide; o `agenda.js` só desenha o painel. **Mudou uma regra num, mude no outro** |
 | `barbearia/dados.py` | **Validação e gravação**, com as mensagens que aparecem na tela. Recusa com `Recusado("mensagem")`. Marcar horário trava as linhas dos profissionais (`select_for_update`) antes de conferir a agenda: é a trava contra reserva dupla. `{ simular }` aplica a mudança numa transação, devolve os conflitos novos e desfaz. A foto do produto chega em data URL, é conferida pelo Pillow e vira arquivo em `midia/` |
 | `barbearia/api.py`, `barbearia/urls.py` | **API JSON** em `/api/`. Respostas `{ ok: true, ... }` ou `{ ok: false, erro }` (status 400; falha de CSRF também responde assim, com 403) e campos em camelCase como no front. `/api/publico/` (vitrine, horários e agendar) nunca devolve dado de outros clientes. `/api/painel/` devolve o estado inteiro e recebe as alterações. `painel/exemplo` e `painel/dados-de-teste` só existem com `DJANGO_DEBUG=1`. Login por `painel/entrar` e `painel/sair`. `painel/eu` diz quem está logado (401 sem login). Sem login, o painel responde 401; usuário sem barbeiro ativo, 403. 5 senhas erradas seguidas bloqueiam o usuário por 15 minutos. No estado, o `preco` dos atendimentos dos colegas vem `null`; o superusuário (o João, no suporte) vê tudo. Os POST, PUT e DELETE precisam do cabeçalho `X-CSRFToken` (cookie `csrftoken`, entregue pela vitrine e pelo estado) |
+| `barbearia/management/commands/anonimizar_antigos.py` | LGPD: tira nome e WhatsApp de quem não tem atendimento há mais de `LGPD_GUARDA_DIAS` (730 dias, no `settings.py`). Conta pelo cliente (telefone), não pelo atendimento, e série sem fim nunca vence. Na VPS, roda todo dia |
 | `barbearia/tests/` | Testes automáticos (`uv run python manage.py test barbearia`). O "agora" dos testes é fixo (segunda, 02/11/2026, 10h) |
 | `clientes/<slug>/dados_iniciais.json` | Dados iniciais de cada barbearia (profissionais, expedientes, serviços e produtos), carregados com `manage.py loaddata` |
 | `pyproject.toml`, `uv.lock`, `.python-version` | Dependências e versão do Python, gerenciadas pelo `uv` |
@@ -96,7 +98,7 @@ Não espalhe dado de cliente pelo código: o que for específico de uma barbeari
   - Tocar num horário livre abre a janela de novo atendimento (`#janelaNovo`, uma `.folha`) com dia, hora e profissional da coluna (ou do filtro).
   - Tocar num atendimento abre uma folha com os detalhes, o lembrete pronto no WhatsApp, "Tornar recorrente" (só em avulsos, de qualquer data), "cancelar só este dia" e "encerrar repetição a partir deste dia".
 - **Novo atendimento** (janela aberta pelo horário livre do quadro, não é mais aba nem botão): agendamento manual, com repetição opcional (semanal, quinzenal ou mensal, com 2 a 52 atendimentos ou **sem data para terminar**). O seletor mostra só horários livres. Blocos baixos ganham `bloco--curto` (sem horário) ou `bloco--mini` (uma linha só). Na visão do dia o bloco mostra o nome inteiro do cliente.
-- **Horários**: expediente individual de cada profissional por dia da semana (início, fim e pausa), folgas e ausências por profissional, feriados e bloqueios da barbearia toda. Os três cartões recolhem (`<details class="cartao cartao--recolhivel">`, seta à direita do título) e começam fechados.
+- **Horários**: expediente individual de cada profissional por dia da semana (início, fim e pausa), **perfil no agendamento** (nome, descrição e foto; a foto é cortada quadrada em 400px antes de enviar, com `reduzirFoto(arquivo, 400, { quadrada: true })`), folgas e ausências por profissional, feriados e bloqueios da barbearia toda. Incluir ou tirar barbeiro e criar o login dele é pelo admin. Os quatro cartões recolhem (`<details class="cartao cartao--recolhivel">`, seta à direita do título) e começam fechados.
 - **Serviços**: cadastrar, editar e remover (nome, preço, duração em passos de 15 min e símbolo na agenda, de `ICONES_DE_SERVICO` em `dados.js`). Cada símbolo tem uma cor própria (tokens `--cor-icone-*` no `tema.css`, aplicados pela classe `icone-servico--<nome>`), para reconhecer o serviço só pela cor. Os serviços ficam no banco; os iniciais vêm do `dados_iniciais.json`. Remover só marca `removido: true`, para os atendimentos antigos continuarem com o nome, e o último serviço não pode ser removido. Mudar preço ou duração não altera quem já marcou, porque o agendamento guarda `preco` e `duracao`.
 - **Produtos**: cadastrar, **editar** (reaproveita o formulário) e remover. A foto é reduzida para 900px em JPEG antes de salvar.
 - **Relatórios**: funciona como um painel de BI. Filtros numa faixa só no topo (período com atalhos ou datas, profissional, serviço, origem e tipo); indicadores (faturamento, atendimentos, ticket médio, clientes e ocupação da agenda) com variação contra o período anterior; um gráfico em que o barbeiro escolhe o que mostrar (faturamento, atendimentos, horas ou ticket), como agrupar (dia, semana, mês, dia da semana, horário, profissional, serviço, origem, tipo ou cliente) e o tipo (colunas, barras, linha, rosca ou só tabela); e a tabela com os mesmos números, sempre visível.
@@ -106,6 +108,12 @@ Não espalhe dado de cliente pelo código: o que for específico de uma barbeari
   - **PDF**: `window.print()` (o barbeiro escolhe "Salvar como PDF"). O `@media print` do `relatorios.css` mostra só o relatório, com cabeçalho da barbearia e filtros; as cores de papel ficam no `@media print` do `tema.css`.
 - **Valores**: o servidor manda `preco: null` nos atendimentos dos colegas. A agenda soma só os próprios (`somaDosValores` e `temValor`): cabeçalho, lista e detalhe não mostram valor de colega. O relatório fica travado em quem está logado (`barbeiroTravado()`), sem o filtro e sem o agrupamento por profissional; o administrador vê tudo.
 - O painel atualiza sozinho quando outro aparelho muda os dados (`aoMudar`, a cada 30 s e ao voltar para a aba). Cada envio de formulário trava o botão enquanto o servidor responde (`enviando()`), e a resposta passa por `resultado()`, que mostra o erro ou recarrega o estado.
+
+**LGPD**
+- Base legal do agendamento: execução do serviço pedido pelo cliente (art. 7º, V). Por isso **não há caixinha de consentimento** (decisão do João): o `/agendar` mostra um aviso com link para a `/privacidade` logo acima da confirmação.
+- A barbearia é a controladora; a AR Systems (o João) é a operadora.
+- Pedido de apagar: no admin, em Agendamentos, busque o cliente, marque um atendimento dele e rode a ação "LGPD: apagar nome e WhatsApp destes clientes" (`anonimizar_cliente`). Troca nome e telefone por "Cliente removido" e `0000000000` em todos os atendimentos dele, apaga os futuros e encerra as séries. Os números dos relatórios ficam.
+- Prazo de guarda: **2 anos sem atendimento** (decisão do João), pelo comando `anonimizar_antigos`.
 
 ## Regras de negócio (em `agenda.js` e `barbearia/agenda.py`)
 
@@ -164,7 +172,7 @@ Datas são strings `AAAA-MM-DD` e horas são `HH:MM`. Telefones são guardados s
 
 - O front ainda calcula "hoje" e "agora" pelo relógio do aparelho (o servidor usa o fuso da barbearia). Só faz diferença em celular com a hora errada; quem decide se o horário está livre é o servidor.
 - Cliente consultar e desmarcar o próprio horário. Lembrete automático no WhatsApp (hoje é um toque, via link `wa.me`).
-- LGPD: hoje há só uma linha de aviso no formulário. Falta política de privacidade e consentimento.
-- Editar profissionais pelo painel (hoje pelo admin do Django), incluindo o envio da foto (dá para reaproveitar o `reduzirFoto()` e o `ler_foto()` dos produtos).
-- Trocar os retratos provisórios pelas fotos reais do Santiago e do Damigo, e confirmar as descrições ("Fundador da casa" e "Barbeiro" foram inventadas).
+- Incluir um barbeiro novo pelo painel (hoje é pelo admin: cadastro, expediente e login).
+- A política de privacidade foi escrita pelo Claude, sem revisão jurídica. Vale um advogado dar uma olhada antes de vender para muitos clientes.
+- Trocar os retratos provisórios pelas fotos reais do Santiago e do Damigo e confirmar as descrições ("Fundador da casa" e "Barbeiro" foram inventadas). Já dá para fazer pelo painel, em Horários → Perfil no agendamento.
 - Avaliações no Google: o Google não aceita avaliação enviada pelo site (a API só lê e responde). O caminho é o link direto de avaliação do perfil, pedido pelo WhatsApp depois do atendimento e no rodapé. Regras do Google: não filtrar quem é mandado para lá pela nota e não dar brinde em troca.

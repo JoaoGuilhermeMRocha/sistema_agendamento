@@ -115,6 +115,10 @@ AGENDA = {
     "max_atendimentos_repetidos": 52,
 }
 
+# LGPD: depois de 2 anos sem atendimento, o nome e o WhatsApp do cliente são apagados
+# (comando anonimizar_antigos, rodado todo dia na VPS). Está escrito na política de privacidade.
+LGPD_GUARDA_DIAS = 730
+
 
 # Arquivos do admin do Django (o site em si fica em web/).
 STATIC_URL = "/static/"

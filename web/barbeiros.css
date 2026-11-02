@@ -819,6 +819,7 @@ fieldset.campo legend { margin-bottom: 8px; padding: 0; }
 .foto-campo input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 .foto-campo:has(input:focus-visible) { outline: 3px solid var(--cor-destaque); outline-offset: 2px; }
 .foto-campo__previa { width: 56px; height: 56px; border-radius: 12px; object-fit: cover; }
+.foto-campo__previa--redonda { border-radius: 50%; }
 .foto-campo__texto { display: grid; }
 .foto-campo__texto small { color: var(--cor-texto-suave); }
 

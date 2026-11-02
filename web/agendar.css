@@ -375,6 +375,7 @@
 
 .campos { display: grid; gap: 14px; }
 .privacidade { margin-top: 14px; color: var(--cor-texto-suave); font-size: 13px; }
+.privacidade a { color: var(--cor-texto); text-decoration: underline; text-underline-offset: 2px; }
 
 /* Resumo: barra fixa no celular, cartão lateral no computador */
 

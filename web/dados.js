@@ -36,12 +36,13 @@ async function pedir(metodo, caminho, corpo) {
 }
 
 // Nome e descrição dos profissionais vêm do servidor. A foto do config.js vale enquanto
-// não houver uma enviada pelo painel.
+// não houver uma enviada pelo painel (guardada aqui antes da primeira troca da lista).
+const FOTOS_PROVISORIAS = new Map(config.profissionais.map(pessoa => [pessoa.id, pessoa.foto]));
+
 function aplicarProfissionais(resposta) {
   if (!resposta.ok || !Array.isArray(resposta.profissionais)) return resposta;
-  const doConfig = new Map(config.profissionais.map(pessoa => [pessoa.id, pessoa]));
   config.profissionais = resposta.profissionais.map(pessoa =>
-    ({ ...doConfig.get(pessoa.id), ...pessoa, foto: pessoa.foto || doConfig.get(pessoa.id)?.foto || "" }));
+    ({ ...pessoa, foto: pessoa.foto || FOTOS_PROVISORIAS.get(pessoa.id) || "" }));
   return resposta;
 }
 
@@ -102,6 +103,10 @@ export const criarAusencia = (valores, { simular = false } = {}) => pedir("POST"
 export const criarBloqueio = (valores, { simular = false } = {}) => pedir("POST", "painel/bloqueios", { ...valores, simular });
 export const removerAusencia = id => pedir("DELETE", `painel/ausencias/${id}`);
 export const removerBloqueio = id => pedir("DELETE", `painel/bloqueios/${id}`);
+
+/* Painel: perfil dos profissionais no /agendar. foto: undefined mantém, null tira, data URL troca. */
+
+export const atualizarProfissional = (id, dados) => pedir("PUT", `painel/profissionais/${id}`, dados);
 
 /* Painel: serviços e produtos */
 

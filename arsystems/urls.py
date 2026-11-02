@@ -14,6 +14,7 @@ urlpatterns = [
     path("agendar", pagina, {"nome": "agendar"}),
     path("loja", pagina, {"nome": "loja"}),
     path("barbeiros", pagina, {"nome": "barbeiros"}),
+    path("privacidade", pagina, {"nome": "privacidade"}),
 ]
 
 # No computador, o Django também entrega as fotos enviadas e os arquivos de web/

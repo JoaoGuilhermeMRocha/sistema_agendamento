@@ -315,6 +315,11 @@ def _remover_bloqueio(request, corpo, id):
     dados.remover_bloqueio(id)
 
 
+def _atualizar_profissional(request, corpo, id):
+    profissional = dados.atualizar_profissional(id, corpo)
+    return {"profissional": profissional_json(profissional)}
+
+
 def _criar_servico(request, corpo):
     return {"servico": servico_json(dados.criar_servico(corpo))}
 
@@ -359,6 +364,7 @@ ausencias = api(POST=_criar_ausencia)
 ausencia = api(DELETE=_remover_ausencia)
 bloqueios = api(POST=_criar_bloqueio)
 bloqueio = api(DELETE=_remover_bloqueio)
+profissional = api(PUT=_atualizar_profissional)
 servicos = api(POST=_criar_servico)
 servico = api(PUT=_atualizar_servico, DELETE=_remover_servico)
 produtos = api(POST=_criar_produto)

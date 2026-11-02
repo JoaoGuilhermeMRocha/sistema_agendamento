@@ -20,6 +20,7 @@ urlpatterns = [
     path("painel/ausencias/<int:id>", api.ausencia),
     path("painel/bloqueios", api.bloqueios),
     path("painel/bloqueios/<int:id>", api.bloqueio),
+    path("painel/profissionais/<slug:id>", api.profissional),
     path("painel/servicos", api.servicos),
     path("painel/servicos/<int:id>", api.servico),
     path("painel/produtos", api.produtos),

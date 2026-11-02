@@ -476,6 +476,15 @@ input[type="file"].entrada { padding: 10px; font-size: 14px; }
 .rodape__marca { display: grid; justify-items: center; gap: 8px; margin-top: 18px; padding: 0 var(--margem); }
 .rodape__marca .marca__emblema { width: 48px; height: 48px; }
 .rodape__nome { color: var(--cor-texto); font-family: var(--fonte-letreiro); font-size: 20px; text-transform: uppercase; }
+.rodape__legal {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 var(--margem);
+  color: var(--cor-texto-suave);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
 
 /* Endereço que abre o Google Maps (capa e rodapé) */
 .link-mapa {

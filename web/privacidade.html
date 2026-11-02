@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#13110f">
+  <meta name="description" content="Como a barbearia usa e protege os dados de quem marca horário pelo site.">
+  <title>Privacidade · Santiago Barbearia</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/tema.css">
+  <link rel="stylesheet" href="/base.css">
+  <link rel="stylesheet" href="/privacidade.css">
+  <script type="module" src="/privacidade.js"></script>
+</head>
+<body data-pagina="Privacidade">
+  <header class="topo">
+    <div class="topo__interno">
+      <a class="marca" href="/agendar">
+        <span class="marca__emblema" aria-hidden="true"></span>
+        <span class="marca__texto">
+          <span class="marca__nome" data-marca="nomeCurto">Santiago</span>
+          <span class="marca__complemento" data-marca="complemento">Barbearia</span>
+        </span>
+      </a>
+      <nav class="topo__nav" aria-label="Navegação principal">
+        <a href="/agendar">Agendar</a>
+        <a href="/loja">Loja</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- O nome, o endereço e o WhatsApp vêm do config.js; o texto escrito aqui é só provisório.
+       Mudou o prazo de guarda (LGPD_GUARDA_DIAS no settings.py)? Mude aqui também. -->
+  <main class="politica">
+    <h1 class="letreiro">Política de privacidade</h1>
+    <p class="politica__data">Atualizada em 2 de novembro de 2026.</p>
+    <p>
+      Esta página explica, sem juridiquês, o que a <strong data-marca="nome">Santiago Barbearia</strong> faz com os dados
+      de quem marca horário pelo site, como manda a Lei Geral de Proteção de Dados (LGPD, Lei 13.709/2018).
+    </p>
+
+    <h2>Quem cuida dos seus dados</h2>
+    <p>
+      A <strong data-marca="nome">Santiago Barbearia</strong> é a responsável pelos seus dados (a “controladora”, na
+      linguagem da lei). Endereço: <span data-marca="endereco">Rua Ideal Perez, 631 · Arapoti, PR</span>.
+    </p>
+    <p>
+      O sistema de agendamento é fornecido pela <strong>AR Systems</strong> (arsystems.com.br), que guarda os dados em nome
+      da barbearia e só os usa para manter o sistema funcionando (a “operadora”).
+    </p>
+
+    <h2>Quais dados</h2>
+    <p>Quando você marca um horário, guardamos:</p>
+    <ul>
+      <li>seu nome e seu WhatsApp;</li>
+      <li>os serviços, o profissional, o dia e o horário que você escolheu.</li>
+    </ul>
+    <p>Não pedimos CPF, e-mail, endereço nem dados de pagamento.</p>
+
+    <h2>Para quê</h2>
+    <ul>
+      <li>Confirmar e organizar o seu atendimento na agenda da barbearia.</li>
+      <li>Falar com você pelo WhatsApp sobre esse horário: lembrar, remarcar ou avisar de algum imprevisto.</li>
+      <li>Fazer as contas da própria barbearia, como quantos atendimentos e quanto faturou no mês.</li>
+    </ul>
+    <p>
+      A base legal é a execução do serviço que você mesmo pediu (art. 7º, V, da LGPD) e, para as contas da barbearia,
+      o legítimo interesse (art. 7º, IX). Seus dados não são vendidos nem usados para propaganda.
+    </p>
+
+    <h2>Com quem são compartilhados</h2>
+    <p>
+      Com ninguém para fins comerciais. Eles ficam num servidor no Brasil, contratado pela AR Systems, e só os
+      profissionais da barbearia veem a agenda, com usuário e senha. Quando você toca em “Falar com a barbearia”, a
+      conversa acontece no WhatsApp, que segue a política de privacidade dele.
+    </p>
+
+    <h2>Por quanto tempo</h2>
+    <p>
+      Enquanto você for cliente. Depois de <strong>2 anos sem nenhum atendimento</strong>, seu nome e seu WhatsApp são
+      apagados automaticamente. O registro do atendimento continua nas contas da barbearia, mas sem nada que identifique você.
+    </p>
+
+    <h2>Seus direitos</h2>
+    <p>A qualquer momento, você pode pedir para:</p>
+    <ul>
+      <li>saber se temos dados seus e ver quais são;</li>
+      <li>corrigir algum dado errado;</li>
+      <li>apagar seus dados (os horários marcados que ainda não aconteceram são cancelados);</li>
+      <li>tirar dúvidas sobre como eles são usados.</li>
+    </ul>
+    <p class="politica__contato">
+      É só chamar a barbearia no WhatsApp:
+      <a data-link="whatsapp" target="_blank" rel="noopener"><span data-icone="mensagem"></span><span data-texto></span></a>
+    </p>
+    <p>Respondemos em até 15 dias.</p>
+
+    <h2>Cookies</h2>
+    <p>
+      O site não usa cookies de propaganda nem de rastreamento. Ele usa só um cookie técnico de segurança, que protege
+      o envio do agendamento. O painel dos barbeiros usa, além dele, o cookie que mantém o profissional conectado.
+    </p>
+
+    <h2>Segurança</h2>
+    <p>
+      A conexão com o site é criptografada (HTTPS), a agenda só abre com usuário e senha, e as senhas são guardadas
+      de um jeito que nem a AR Systems consegue ler.
+    </p>
+
+    <h2>Mudanças nesta política</h2>
+    <p>Se algo mudar, esta página é atualizada e a data lá em cima muda junto.</p>
+
+    <a class="botao botao--destaque politica__voltar" href="/agendar">Marcar horário <span data-icone="seta"></span></a>
+  </main>
+
+  <footer class="rodape">
+    <div class="xadrez" aria-hidden="true"></div>
+    <div class="rodape__marca">
+      <span class="marca__emblema" aria-hidden="true"></span>
+      <span class="rodape__nome" data-marca="nome">Santiago Barbearia</span>
+    </div>
+    <div class="rodape__contatos">
+      <a data-link="whatsapp" target="_blank" rel="noopener"><span data-icone="mensagem"></span><span data-texto></span></a>
+      <a data-link="instagram" target="_blank" rel="noopener"><span data-icone="instagram"></span><span data-texto></span></a>
+      <a class="link-mapa" data-link="mapa" target="_blank" rel="noopener"><span data-icone="local"></span><span data-texto></span></a>
+    </div>
+    <a class="rodape__legal" href="/privacidade" aria-current="page">Política de privacidade</a>
+  </footer>
+</body>
+</html>

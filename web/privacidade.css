@@ -1,0 +1,29 @@
+/* Página da política de privacidade: texto corrido, numa coluna estreita para ler bem. */
+
+.politica {
+  display: grid;
+  gap: 14px;
+  max-width: 68ch;
+  margin: 0 auto;
+  padding: 32px var(--margem) 56px;
+  color: var(--cor-texto);
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+.politica h1 { font-size: clamp(32px, 9vw, 48px); line-height: 1.05; }
+.politica h2 { margin-top: 18px; font-family: var(--fonte-titulo); font-size: 20px; font-weight: 700; }
+.politica ul { display: grid; gap: 6px; padding-left: 1.2em; list-style: disc; }
+.politica li::marker { color: var(--cor-destaque); }
+.politica__data { color: var(--cor-texto-suave); font-size: 14px; }
+
+.politica__contato a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  color: var(--cor-destaque);
+  font-weight: 700;
+}
+
+.politica__voltar { justify-self: start; margin-top: 18px; }

@@ -7,7 +7,7 @@ import {
 } from "./agenda.js";
 import {
   ICONES_DE_SERVICO, aoMudar, apagarDadosDeTeste, cancelarData, carregar, carregarExemplo, criarAgendamento, criarAusencia,
-  criarBloqueio, atualizarProduto, atualizarServico, criarProduto, criarServico, encerrarRepeticao, entrar, removerAusencia,
+  criarBloqueio, atualizarProduto, atualizarProfissional, atualizarServico, criarProduto, criarServico, encerrarRepeticao, entrar, removerAusencia,
   removerBloqueio, removerProduto, removerServico, sair, salvarExpediente, tornarRecorrente
 } from "./dados.js";
 import {
@@ -68,7 +68,8 @@ const visao = {
   // Mês mostrado no mini calendário (pode ser outro que o do dia escolhido).
   ano: new Date().getFullYear(),
   mes: new Date().getMonth(),
-  profissionalExpediente: config.profissionais[0].id
+  profissionalExpediente: config.profissionais[0].id,
+  profissionalPerfil: config.profissionais[0].id
 };
 
 const indiceProfissional = id => config.profissionais.findIndex(pessoa => pessoa.id === id);
@@ -1187,14 +1188,21 @@ function desenharServicos() {
 /* Produtos */
 
 // Reduz a foto antes de guardar, para caber no armazenamento do navegador.
-function reduzirFoto(arquivo, lado = 900) {
+const TIPOS_DE_FOTO = ["image/jpeg", "image/png", "image/webp"];
+
+// quadrada: corta no centro (retrato dos profissionais, que aparece redondo no /agendar).
+function reduzirFoto(arquivo, lado = 900, { quadrada = false } = {}) {
   return new Promise((resolver, rejeitar) => {
     const imagem = new Image();
     const endereco = URL.createObjectURL(arquivo);
     imagem.onload = () => {
-      const escala = Math.min(1, lado / Math.max(imagem.width, imagem.height));
-      const tela = el("canvas", { width: Math.round(imagem.width * escala), height: Math.round(imagem.height * escala) });
-      tela.getContext("2d").drawImage(imagem, 0, 0, tela.width, tela.height);
+      const corte = Math.min(imagem.width, imagem.height);
+      const [x, y, largura, altura] = quadrada
+        ? [(imagem.width - corte) / 2, (imagem.height - corte) / 2, corte, corte]
+        : [0, 0, imagem.width, imagem.height];
+      const escala = Math.min(1, lado / Math.max(largura, altura));
+      const tela = el("canvas", { width: Math.round(largura * escala), height: Math.round(altura * escala) });
+      tela.getContext("2d").drawImage(imagem, x, y, largura, altura, 0, 0, tela.width, tela.height);
       URL.revokeObjectURL(endereco);
       resolver(tela.toDataURL("image/jpeg", .82));
     };
@@ -1275,7 +1283,7 @@ async function salvarProduto() {
 
   let foto = edicao.id ? edicao.foto : null;
   if (arquivo instanceof File && arquivo.size) {
-    if (!["image/jpeg", "image/png", "image/webp"].includes(arquivo.type)) {
+    if (!TIPOS_DE_FOTO.includes(arquivo.type)) {
       erro.textContent = "Use uma foto JPG, PNG ou WebP.";
       return;
     }
@@ -1326,6 +1334,80 @@ function desenharProdutos() {
   }));
 }
 
+/* Perfil dos profissionais no /agendar */
+
+const formPerfil = $("#formPerfil");
+// Foto do profissional em edição: undefined = continua a mesma, null = tirar.
+let fotoDoPerfil;
+
+function mostrarPreviaPerfil(endereco, enviada) {
+  const previa = $("#perfilPrevia");
+  if (previa.src.startsWith("blob:")) URL.revokeObjectURL(previa.src);
+  previa.hidden = !endereco;
+  if (endereco) previa.src = endereco;
+  else previa.removeAttribute("src");
+  $("#perfilFotoTexto").textContent = enviada ? "Trocar foto" : "Adicionar foto";
+  $("#removerFotoPerfil").hidden = !enviada;
+}
+
+function desenharPerfil() {
+  const id = visao.profissionalPerfil;
+  $("#profPerfil").replaceChildren(...config.profissionais.map(pessoa => el("button", {
+    type: "button",
+    class: "chip",
+    "aria-pressed": String(pessoa.id === id),
+    onclick: () => {
+      visao.profissionalPerfil = pessoa.id;
+      desenharPerfil();
+    }
+  }, pessoa.nome)));
+
+  // estado.profissionais tem a foto enviada (ou vazio); config.profissionais já cai na provisória.
+  const doServidor = estado.profissionais.find(pessoa => pessoa.id === id);
+  formPerfil.reset();
+  formPerfil.elements.nome.value = doServidor.nome;
+  formPerfil.elements.descricao.value = doServidor.descricao;
+  formPerfil.querySelector(".campo__erro").textContent = "";
+  fotoDoPerfil = undefined;
+  mostrarPreviaPerfil(profissionalPorId(id)?.foto, Boolean(doServidor.foto));
+}
+
+$("#perfilFoto").addEventListener("change", evento => {
+  const arquivo = evento.target.files[0];
+  if (arquivo) mostrarPreviaPerfil(URL.createObjectURL(arquivo), true);
+});
+
+$("#removerFotoPerfil").addEventListener("click", () => {
+  $("#perfilFoto").value = "";
+  fotoDoPerfil = null;
+  mostrarPreviaPerfil(null, false);
+});
+
+formPerfil.addEventListener("submit", evento => {
+  evento.preventDefault();
+  enviando(formPerfil, async () => {
+    const erro = formPerfil.querySelector(".campo__erro");
+    const arquivo = formPerfil.elements.foto.files[0];
+    let foto = fotoDoPerfil;
+    if (arquivo) {
+      if (!TIPOS_DE_FOTO.includes(arquivo.type)) {
+        erro.textContent = "Use uma foto JPG, PNG ou WebP.";
+        return;
+      }
+      try {
+        foto = await reduzirFoto(arquivo, 400, { quadrada: true });
+      } catch (falha) {
+        erro.textContent = falha.message;
+        return;
+      }
+    }
+    const dados = { nome: formPerfil.elements.nome.value, descricao: formPerfil.elements.descricao.value };
+    if (foto !== undefined) dados.foto = foto;
+    const nome = dados.nome.trim() || "profissional";
+    if (await resultado(atualizarProfissional(visao.profissionalPerfil, dados), `Perfil de ${nome} salvo.`, erro)) atualizarTudo();
+  });
+});
+
 /* Sessão e dados de teste */
 
 $("#sessaoNome").textContent = estado.eu.nome;
@@ -1352,6 +1434,7 @@ confirmarNoBotao($("#gerarExemplo"), "Toque de novo: troca os atendimentos atuai
 function atualizarTudo() {
   desenharAgenda();
   desenharExpediente();
+  desenharPerfil();
   desenharAusencias();
   desenharBloqueios();
   desenharServicos();
