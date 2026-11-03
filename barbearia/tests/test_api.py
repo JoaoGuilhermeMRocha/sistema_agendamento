@@ -65,6 +65,11 @@ class PublicoTests(ApiTestCase):
         self.assertEqual(len(resposta["produtos"]), 2)
         self.assertIn("csrftoken", self.client.cookies)
 
+    def test_vitrine_aceita_head_do_monitoramento(self):
+        # o UptimeRobot confere com HEAD; 405 aqui fazia o site parecer fora do ar
+        self.assertEqual(self.client.head("/api/publico/vitrine").status_code, 200)
+        self.assertEqual(self.client.head("/api/painel/estado").status_code, 401)
+
     def test_horarios_dos_proximos_14_dias(self):
         status, resposta = self.chamar("get", f"/api/publico/horarios?servicos={CABELO},{BARBA}")
         self.assertEqual(status, 200)

@@ -59,9 +59,11 @@ def api(aberta=False, **metodos):
     Recusado vira { ok: false, erro } com status 400. Sem aberta=True, exige login.
     """
     def rota(request, **parametros):
-        if request.method == "GET":
+        # HEAD responde como GET, sem corpo: é o que o UptimeRobot usa para conferir se o site está no ar
+        metodo = "GET" if request.method == "HEAD" else request.method
+        if metodo == "GET":
             get_token(request)  # entrega o cookie de CSRF, que os POST precisam mandar de volta
-        funcao = metodos.get(request.method)
+        funcao = metodos.get(metodo)
         if not funcao:
             return JsonResponse({"ok": False, "erro": "Método não permitido."}, status=405)
         if not aberta and not request.user.is_authenticated:
