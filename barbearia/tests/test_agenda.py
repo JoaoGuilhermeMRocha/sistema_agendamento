@@ -50,6 +50,18 @@ class RecorrenciaTests(SimpleTestCase):
     def test_quinzenal_repete_de_14_em_14_dias(self):
         self.assertEqual(agenda.datas_da_serie(TERCA, "quinzenal", 2), [date(2026, 11, 3), date(2026, 11, 17)])
 
+    def test_a_cada_3_semanas_repete_de_21_em_21_dias(self):
+        self.assertEqual(
+            agenda.datas_da_serie(TERCA, "trissemanal", 3),
+            [date(2026, 11, 3), date(2026, 11, 24), date(2026, 12, 15)],
+        )
+        serie = atendimento(frequencia="trissemanal", vezes=None)
+        self.assertTrue(agenda.ocorre_em(serie, date(2026, 11, 24)))
+        self.assertFalse(agenda.ocorre_em(serie, date(2026, 11, 17)))
+        # Já passou: a série começa na próxima data da regra.
+        self.assertEqual(agenda.primeira_ocorrencia_desde(date(2026, 10, 6), "trissemanal", AGORA.date()),
+                         date(2026, 11, 17))
+
     def test_mensal_segue_o_dia_da_semana_do_mes(self):
         # 17/11 é a 3ª terça: a série cai sempre na 3ª terça.
         self.assertEqual(
@@ -186,6 +198,53 @@ class HorariosLivresTests(SimpleTestCase):
     def test_dia_de_folga_nao_tem_horario(self):
         self.assertEqual(agenda.horarios_livres(estado(), date(2026, 11, 8), 30), [])  # domingo
         self.assertTrue(agenda.dia_fechado(estado(), date(2026, 11, 8)))
+
+
+def com_fila(base, inicio="09:00", fim="18:00", profissional="santiago", dia=2):
+    """Põe um período de horário sequencial no expediente (dia 2 = terça)."""
+    atual = base.expedientes[profissional][dia]
+    base.expedientes[profissional][dia] = Expediente(atual.inicio, atual.fim, atual.pausa_inicio, atual.pausa_fim, h(inicio), h(fim))
+    return base
+
+
+class FilaTests(SimpleTestCase):
+    """Horário sequencial: no período marcado no expediente, o site mostra só o primeiro horário livre."""
+
+    def test_so_o_primeiro_livre_do_periodo_sequencial(self):
+        base = com_fila(estado(atendimentos=[atendimento(inicio="09:00", duracao=20)]))
+        self.assertEqual(agenda.horarios_livres(base, TERCA, 30, profissional="santiago", fila=True), [h("09:20")])
+        # O painel continua vendo todos.
+        self.assertGreater(len(agenda.horarios_livres(base, TERCA, 30, profissional="santiago")), 1)
+        # Quem não tem período sequencial não muda.
+        self.assertGreater(len(agenda.horarios_livres(base, TERCA, 30, profissional="damigo", fila=True)), 1)
+
+    def test_fora_do_periodo_os_horarios_sao_livres(self):
+        base = com_fila(estado(), inicio="13:00", fim="18:00")
+        horarios = agenda.horarios_livres(base, TERCA, 30, profissional="santiago", fila=True)
+        self.assertEqual(horarios[0], h("09:00"))
+        self.assertIn(h("11:30"), horarios)
+        self.assertEqual([inicio for inicio in horarios if inicio >= h("13:00")], [h("13:00")])
+
+    def test_preenche_o_buraco_mais_cedo_primeiro(self):
+        base = com_fila(estado(atendimentos=[atendimento(inicio="10:00", duracao=30)]))
+        self.assertEqual(agenda.primeiro_livre(base, "santiago", TERCA, 30), h("09:00"))
+        self.assertEqual(agenda.primeiro_livre(base, "santiago", TERCA, 90), h("10:30"))  # 9h + 1h30 bate no das 10h
+
+    def test_hoje_comeca_depois_de_agora(self):
+        base = estado()
+        base.expedientes["santiago"][1] = Expediente(h("09:00"), h("18:00"), fila_inicio=h("09:00"), fila_fim=h("18:00"))
+        self.assertEqual(agenda.primeiro_livre(base, "santiago", AGORA.date(), 30), h("10:15"))  # segunda, agora 10h
+
+    def test_sem_periodo_nao_ha_fila(self):
+        self.assertIsNone(agenda.primeiro_livre(estado(), "santiago", TERCA, 30))
+
+    def test_sem_preferencia_junta_a_fila_com_os_horarios_do_colega(self):
+        base = com_fila(estado(atendimentos=[atendimento(profissional="damigo", inicio="09:00", duracao=60)]))
+        horarios = agenda.horarios_livres(base, TERCA, 30, fila=True)
+        self.assertEqual(horarios[:3], [h("09:00"), h("10:00"), h("10:15")])  # 9h com Santiago, depois Damigo
+        self.assertEqual(agenda.escolher_profissional(base, None, [TERCA], h("09:00"), 30, fila=True), "santiago")
+        self.assertEqual(agenda.escolher_profissional(base, None, [TERCA], h("10:15"), 30, fila=True), "damigo")
+        self.assertIsNone(agenda.escolher_profissional(base, "santiago", [TERCA], h("10:15"), 30, fila=True))
 
 
 class ConflitosTests(SimpleTestCase):

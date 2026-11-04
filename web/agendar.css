@@ -287,6 +287,18 @@
 
 /* Dias */
 
+/* Complementares: aparecem depois que um serviço comum é escolhido */
+
+.complementos {
+  display: grid;
+  gap: 10px;
+  margin-top: 4px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--cor-linha-forte);
+  animation: surge .35s var(--mola);
+}
+.complementos__titulo { color: var(--cor-texto-suave); font-size: 14px; font-weight: 700; }
+
 .dias {
   display: flex;
   gap: 8px;
@@ -323,10 +335,73 @@
 .dia[aria-pressed="true"] :is(.dia__semana, .dia__mes) { color: color-mix(in srgb, var(--cor-enfase-texto) 70%, transparent); }
 .dia:disabled { background: transparent; opacity: .45; cursor: not-allowed; }
 
+/* 16º quadradinho: abre o calendário com o resto das datas */
+.dia--mais { flex-basis: 84px; align-content: center; border-style: dashed; color: var(--cor-destaque-forte); }
+.dia--mais > .icone { width: 22px; height: 22px; }
+.dia__mais { font-size: 12px; font-weight: 700; line-height: 1.2; text-align: center; }
+.dia--mais[aria-expanded="true"]:not([aria-pressed="true"]) { border-style: solid; border-color: var(--cor-destaque); background: var(--cor-destaque-suave); }
+.dia--mais[aria-pressed="true"] { border-style: solid; }
+.dia__mes .icone { width: 11px; height: 11px; margin-right: 3px; vertical-align: -1px; }
+
+/* Calendário de "Ver mais datas" */
+
+.calendario {
+  max-width: 420px;
+  margin-bottom: 14px;
+  padding: 14px;
+  border: 1px solid var(--cor-linha);
+  border-radius: var(--raio-m);
+  background: var(--cor-superficie);
+  box-shadow: var(--sombra-1);
+  animation: surge .3s var(--mola);
+}
+.calendario__aviso { padding: 24px 0; color: var(--cor-texto-suave); text-align: center; }
+.calendario__topo { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.calendario__mes { font-family: var(--fonte-titulo); font-size: 17px; font-weight: 600; }
+.calendario__seta {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--cor-superficie-2);
+  transition: transform .18s var(--mola), opacity .2s;
+}
+.calendario__seta:active:not(:disabled) { transform: scale(.92); }
+.calendario__seta:disabled { opacity: .3; cursor: not-allowed; }
+.calendario__semana, .calendario__grade { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.calendario__semana { margin-bottom: 4px; color: var(--cor-texto-suave); font-size: 12px; font-weight: 700; text-align: center; }
+.calendario__dia {
+  display: grid;
+  place-items: center;
+  min-height: 44px;
+  border: 1px solid transparent;
+  border-radius: var(--raio-p);
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  transition: transform .18s var(--mola), background-color .2s, border-color .2s, color .2s;
+}
+button.calendario__dia { border-color: var(--cor-linha); background: var(--cor-superficie-2); }
+button.calendario__dia:active:not(:disabled) { transform: scale(.94); }
+.calendario__dia--hoje { box-shadow: inset 0 -3px 0 var(--cor-destaque); }
+.calendario__dia--fora, button.calendario__dia:disabled {
+  border-color: transparent;
+  background: transparent;
+  color: var(--cor-texto-suave);
+  font-weight: 500;
+  opacity: .45;
+}
+button.calendario__dia:disabled { text-decoration: line-through; cursor: not-allowed; }
+.calendario__dia[aria-pressed="true"] { border-color: var(--cor-enfase); background: var(--cor-enfase); color: var(--cor-enfase-texto); }
+
 /* Horários */
 
 .horarios { min-height: 96px; }
 .horarios__dia { margin: 4px 0 2px; font-weight: 700; }
+.horarios__fila { display: flex; gap: 8px; align-items: flex-start; margin-top: 6px; color: var(--cor-texto-suave); font-size: 14px; }
+.horarios__fila .icone { flex: none; width: 18px; height: 18px; margin-top: 1px; color: var(--cor-destaque-forte); }
 .horarios__grupo { margin-top: 14px; }
 .horarios__grupo h3 {
   margin-bottom: 8px;
@@ -367,6 +442,7 @@
 
 @media (hover: hover) {
   .servico:hover, .dia:hover:not(:disabled):not([aria-pressed="true"]),
+  button.calendario__dia:hover:not(:disabled):not([aria-pressed="true"]),
   .horario:hover:not([aria-pressed="true"]),
   .profissional:hover:not([aria-pressed="true"]) { border-color: var(--cor-linha-forte); }
 }
@@ -488,6 +564,59 @@ body:not(.concluido) { padding-bottom: calc(92px + env(safe-area-inset-bottom));
 .confirmado__acoes { display: grid; gap: 10px; width: 100%; }
 
 @keyframes selo { from { transform: scale(.4); opacity: 0; } }
+
+/* Lembrete de confirmar pelo WhatsApp: popup que some sozinho (a barra embaixo mostra o tempo) */
+
+.lembrete {
+  position: fixed;
+  inset: auto 16px calc(16px + env(safe-area-inset-bottom));
+  z-index: var(--z-aviso);
+  display: grid;
+  gap: 8px;
+  overflow: hidden;
+  padding: 20px 20px 22px;
+  border: 1px solid color-mix(in srgb, var(--cor-destaque) 55%, transparent);
+  border-radius: var(--raio-g);
+  background: var(--cor-barra);
+  color: var(--cor-barra-texto);
+  box-shadow: var(--sombra-2);
+  animation: lembrete .45s var(--mola);
+}
+.lembrete__titulo { padding-right: 44px; font-family: var(--fonte-titulo); font-size: 19px; font-weight: 600; }
+.lembrete__texto { margin-bottom: 6px; color: color-mix(in srgb, var(--cor-barra-texto) 72%, transparent); font-size: 15px; }
+.lembrete__fechar {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--cor-barra-texto) 10%, transparent);
+  color: inherit;
+}
+.lembrete__fechar:active { transform: scale(.92); }
+.lembrete__tempo {
+  position: absolute;
+  inset: auto 0 0;
+  height: 4px;
+  background: var(--cor-destaque);
+  transform-origin: left;
+  animation: tempo-do-lembrete var(--duracao-lembrete, 30s) linear forwards;
+}
+
+@keyframes lembrete { from { opacity: 0; transform: translateY(24px); } }
+@keyframes tempo-do-lembrete { to { transform: scaleX(0); } }
+
+@media (min-width: 700px) {
+  .lembrete { inset: auto 24px 24px auto; width: 380px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lembrete__tempo { display: none; }
+}
 
 @media (min-width: 700px) {
   .capa { padding-top: 64px; padding-bottom: 88px; }

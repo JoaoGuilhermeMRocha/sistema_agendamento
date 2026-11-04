@@ -34,7 +34,9 @@ export const config = {
     // Duração de um serviço: de 5 em 5 min, até 4 h.
     passoDuracaoMinutos: 5,
     duracaoMaximaMinutos: 240,
-    diasParaAgendar: 14,
+    // O /agendar mostra os primeiros dias numa lista e o resto num calendário.
+    diasParaAgendar: 90,
+    diasNaLista: 15,
     // Até onde conferir conflitos de uma repetição sem data para terminar.
     horizonteRecorrenciaDias: 180,
     maxAtendimentosRepetidos: 52

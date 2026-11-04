@@ -117,7 +117,8 @@ AGENDA = {
     # Duração de um serviço: de 5 em 5 min, até 4 h.
     "passo_duracao_minutos": 5,
     "duracao_maxima_minutos": 240,
-    "dias_para_agendar": 14,
+    # O /agendar mostra os primeiros dias numa lista e o resto num calendário.
+    "dias_para_agendar": 90,
     # Até onde conferir conflitos de uma repetição sem data para terminar.
     "horizonte_recorrencia_dias": 180,
     "max_atendimentos_repetidos": 52,

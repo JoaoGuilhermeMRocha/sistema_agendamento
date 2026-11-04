@@ -23,7 +23,7 @@ class ProfissionalAdmin(admin.ModelAdmin):
 
 @admin.register(Servico)
 class ServicoAdmin(admin.ModelAdmin):
-    list_display = ["nome", "preco", "duracao", "icone", "removido"]
+    list_display = ["nome", "preco", "duracao", "icone", "complementar", "removido"]
     list_filter = ["removido"]
 
 

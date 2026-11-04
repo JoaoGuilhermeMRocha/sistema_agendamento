@@ -41,6 +41,9 @@ export const servicosAtivos = estado => estado.servicos.filter(servico => !servi
 export const servicoPorId = (estado, id) => estado.servicos.find(servico => servico.id === id);
 export const profissionalPorId = id => config.profissionais.find(pessoa => pessoa.id === id);
 
+// Complementar (pezinho, sobrancelha...) só vale junto com um serviço comum.
+export const temServicoComum = (estado, ids) => ids.some(id => servicoPorId(estado, id)?.complementar === false);
+
 export function somarServicos(estado, ids) {
   const lista = ids.map(id => servicoPorId(estado, id)).filter(Boolean);
   return {
@@ -51,11 +54,12 @@ export function somarServicos(estado, ids) {
   };
 }
 
-const INTERVALO = { semanal: 7, quinzenal: 14 };
+const INTERVALO = { semanal: 7, quinzenal: 14, trissemanal: 21 };
 export const FREQUENCIAS = {
   nenhuma: "Só desta vez",
   semanal: "Toda semana",
   quinzenal: "A cada 15 dias",
+  trissemanal: "A cada 3 semanas",
   mensal: "Todo mês"
 };
 

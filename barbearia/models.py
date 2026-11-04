@@ -45,6 +45,9 @@ class Expediente(models.Model):
     fim = models.TimeField()
     pausa_inicio = models.TimeField("início da pausa", null=True, blank=True)
     pausa_fim = models.TimeField("fim da pausa", null=True, blank=True)
+    # Horário sequencial (fila): nesse período, o site mostra ao cliente só o próximo horário livre.
+    fila_inicio = models.TimeField("sequencial das", null=True, blank=True)
+    fila_fim = models.TimeField("sequencial até", null=True, blank=True)
 
     class Meta:
         ordering = ["profissional", "dia_semana"]
@@ -56,6 +59,12 @@ class Expediente(models.Model):
                 condition=Q(pausa_inicio__isnull=True, pausa_fim__isnull=True) | Q(
                     pausa_inicio__gt=F("inicio"), pausa_inicio__lt=F("pausa_fim"), pausa_fim__lt=F("fim")),
                 name="expediente_pausa_valida",
+            ),
+            # Horário sequencial: as duas horas vazias, ou as duas preenchidas e dentro do expediente.
+            models.CheckConstraint(
+                condition=Q(fila_inicio__isnull=True, fila_fim__isnull=True) | Q(
+                    fila_inicio__gte=F("inicio"), fila_inicio__lt=F("fila_fim"), fila_fim__lte=F("fim")),
+                name="expediente_fila_valida",
             ),
         ]
 
@@ -111,6 +120,9 @@ class Servico(models.Model):
     preco = models.DecimalField("preço", max_digits=8, decimal_places=2)
     duracao = models.PositiveSmallIntegerField("duração", help_text="Em minutos, de 5 em 5, até 240.")
     icone = models.CharField("símbolo na agenda", max_length=20, choices=ICONES_DE_SERVICO, default="tesoura")
+    # Complementar (pezinho, sobrancelha...) só pode ser marcado junto com um serviço comum.
+    complementar = models.BooleanField(
+        default=False, help_text="Só aparece depois que o cliente escolhe outro serviço e não pode ser marcado sozinho.")
     # Removido some das listas, mas continua no banco para os atendimentos antigos mostrarem o nome.
     removido = models.BooleanField(default=False)
 
@@ -153,6 +165,7 @@ class Agendamento(models.Model):
         NENHUMA = "nenhuma", "Não repete"
         SEMANAL = "semanal", "Toda semana"
         QUINZENAL = "quinzenal", "A cada 15 dias"
+        TRISSEMANAL = "trissemanal", "A cada 3 semanas"
         MENSAL = "mensal", "Todo mês"
 
     class Origem(models.TextChoices):
@@ -168,7 +181,7 @@ class Agendamento(models.Model):
     # Preço e duração da época em que foi marcado: mudar o serviço depois não altera quem já marcou.
     duracao = models.PositiveSmallIntegerField("duração")
     preco = models.DecimalField("preço", max_digits=8, decimal_places=2)
-    frequencia = models.CharField(max_length=10, choices=Frequencia.choices, default=Frequencia.NENHUMA)
+    frequencia = models.CharField(max_length=12, choices=Frequencia.choices, default=Frequencia.NENHUMA)
     # Total de atendimentos da série. Vazio numa série = sem data para terminar.
     vezes = models.PositiveSmallIntegerField(null=True, blank=True, default=1)
     # Repetição encerrada: esta data e as seguintes deixam de existir.

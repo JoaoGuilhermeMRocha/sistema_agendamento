@@ -299,6 +299,10 @@ input[type="file"].entrada { padding: 10px; font-size: 14px; }
 .alternador input:checked { background: var(--cor-destaque); }
 .alternador input:checked::after { transform: translateX(20px); }
 
+/* Alternador com explicação embaixo do nome */
+.alternador--texto span { display: grid; gap: 2px; }
+.alternador--texto small { color: var(--cor-texto-suave); font-size: 13px; font-weight: 500; line-height: 1.4; }
+
 /* Chips: opções de escolha rápida */
 
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }

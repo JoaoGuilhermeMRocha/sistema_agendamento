@@ -122,7 +122,8 @@ def profissional_json(profissional):
 
 def servico_json(servico):
     return {"id": str(servico.id), "nome": servico.nome, "preco": valor(servico.preco),
-            "duracao": servico.duracao, "icone": servico.icone, "removido": servico.removido}
+            "duracao": servico.duracao, "icone": servico.icone,
+            "complementar": servico.complementar, "removido": servico.removido}
 
 
 def produto_json(produto):
@@ -154,6 +155,7 @@ def expedientes_json():
         expedientes[item.profissional_id][str(item.dia_semana)] = {
             "inicio": hora_texto(item.inicio), "fim": hora_texto(item.fim),
             "pausaInicio": hora_texto(item.pausa_inicio), "pausaFim": hora_texto(item.pausa_fim),
+            "filaInicio": hora_texto(item.fila_inicio), "filaFim": hora_texto(item.fila_fim),
         }
     return expedientes
 
@@ -172,25 +174,34 @@ def _vitrine(request, corpo):
 def _horarios(request, corpo):
     """Horários livres dos próximos dias, para os serviços e o profissional escolhidos.
 
-    ?servicos=1,2&profissional=santiago. Sem serviço, usa o mais curto, para os dias não
-    aparecerem todos como lotados.
+    ?servicos=1,2&profissional=santiago&dias=15. Sem serviço, usa o comum mais curto, para os dias
+    não aparecerem todos como lotados. dias vai até AGENDA["dias_para_agendar"] (o padrão).
+    No período sequencial (fila) do expediente, entra só o primeiro horário livre. Com um profissional
+    escolhido, cada dia diz o período sequencial dele ("sequencial"), para a página avisar o cliente.
     """
     ids = [id for id in request.GET.get("servicos", "").split(",") if id]
     escolhidos = dados.servicos_escolhidos(ids)
     profissional = request.GET.get("profissional") or None
     if profissional and not Profissional.objects.filter(pk=profissional, ativo=True).exists():
         raise Recusado("Profissional inválido.")
-    duracao = (sum(servico.duracao for servico in escolhidos)
-               or min(Servico.objects.filter(removido=False).values_list("duracao", flat=True), default=0))
+    maximo = settings.AGENDA["dias_para_agendar"]
+    pedidos = request.GET.get("dias", "")
+    quantos = min(int(pedidos), maximo) if pedidos.isdigit() and int(pedidos) > 0 else maximo
+    comuns = Servico.objects.filter(removido=False, complementar=False).values_list("duracao", flat=True)
+    duracao = sum(servico.duracao for servico in escolhidos) or min(comuns, default=0)
 
     estado = agenda.carregar_estado()
     dias = []
-    for indice in range(settings.AGENDA["dias_para_agendar"]):
+    for indice in range(quantos):
         data = estado.hoje + timedelta(days=indice)
+        expediente = agenda.expediente_do_dia(estado, profissional, data) if profissional else None
         dias.append({
+            "sequencial": {"inicio": minutos_texto(expediente.fila_inicio), "fim": minutos_texto(expediente.fila_fim)}
+            if expediente and expediente.fila_inicio is not None else None,
             "data": data.isoformat(),
             "fechado": agenda.dia_fechado(estado, data, profissional),
-            "horarios": [minutos_texto(inicio) for inicio in agenda.horarios_livres(estado, data, duracao, profissional)],
+            "horarios": [minutos_texto(inicio)
+                         for inicio in agenda.horarios_livres(estado, data, duracao, profissional, fila=True)],
         })
     return {"dias": dias}
 

@@ -3,7 +3,7 @@ import {
   FREQUENCIAS, atendimentosDoDia, conflitoDoAtendimento, daChave, datasDaSerie, descreverMensal,
   descreverRepeticao, diaFechado, expedienteDoDia, formatarData, formatarMoeda, hoje, horaTexto, horariosLivres,
   inicioDaRecorrencia, inicioDaSemana, minutos, motivoIndisponivel, paraChave, profissionalPorId, servicoPorId,
-  servicosAtivos, somarDias, somarServicos
+  servicosAtivos, somarDias, somarServicos, temServicoComum
 } from "./agenda.js";
 import {
   ICONES_DE_SERVICO, aoMudar, apagarDadosDeTeste, cancelarData, carregar, carregarExemplo, criarAgendamento, criarAusencia,
@@ -813,7 +813,7 @@ function painelRecorrencia(agendamento) {
   area.append(
     el("span", { class: "campo__rotulo" }, "De quanto em quanto tempo?"),
     el("div", { class: "chips", role: "radiogroup", "aria-label": "Frequência" },
-      ["semanal", "quinzenal", "mensal"].map((frequencia, indice) => el("label", { class: "chip" },
+      ["semanal", "quinzenal", "trissemanal", "mensal"].map((frequencia, indice) => el("label", { class: "chip" },
         el("input", { type: "radio", name: "recFrequencia", value: frequencia, checked: indice === 0 }), FREQUENCIAS[frequencia]))),
     el("span", { class: "campo__rotulo" }, "Quantos atendimentos?"),
     el("div", { class: "quantidade" }, vezes, el("label", { class: "chip" }, semFim, "Sem fim")),
@@ -848,14 +848,25 @@ for (const folha of document.querySelectorAll(".folha")) {
 
 const formNovo = $("#formNovo");
 
-// Mantém os serviços já marcados quando a lista muda; sem nenhum, marca o primeiro.
+// Mantém os serviços já marcados quando a lista muda; sem nenhum comum, marca o primeiro comum.
 function desenharServicosNovo() {
   const ativos = servicosAtivos(estado);
   const marcados = new FormData(formNovo).getAll("servico").filter(id => ativos.some(servico => servico.id === id));
-  if (!marcados.length) marcados.push(ativos[0].id);
+  if (!temServicoComum(estado, marcados)) marcados.push(ativos.find(servico => !servico.complementar)?.id);
   $("#novoServicos").replaceChildren(...ativos.map(servico => el("label", { class: "chip" },
     el("input", { type: "checkbox", name: "servico", value: servico.id, checked: marcados.includes(servico.id) }),
     `${servico.nome} · ${formatarMoeda(servico.preco)}`)));
+  travarComplementaresNovo();
+}
+
+// Complementar só vale junto com um serviço comum: sem nenhum comum marcado, ele desmarca e trava.
+function travarComplementaresNovo() {
+  const comum = temServicoComum(estado, new FormData(formNovo).getAll("servico"));
+  for (const caixa of $("#novoServicos").querySelectorAll('input[name="servico"]')) {
+    if (!servicoPorId(estado, caixa.value)?.complementar) continue;
+    if (!comum) caixa.checked = false;
+    caixa.disabled = !comum;
+  }
 }
 
 function desenharFormNovo() {
@@ -885,6 +896,7 @@ function lerFormNovo() {
 }
 
 function atualizarHorariosNovo() {
+  travarComplementaresNovo();
   const { servicos, profissionalId, data, repeticao } = lerFormNovo();
   const { duracao, preco } = somarServicos(estado, servicos);
   const repete = repeticao.frequencia !== "nenhuma";
@@ -1030,7 +1042,9 @@ function desenharExpediente() {
       hora("inicio", "Começa", atual?.inicio ?? "09:00"),
       hora("fim", "Termina", atual?.fim ?? "18:00"),
       hora("pausaInicio", "Pausa das", atual?.pausaInicio),
-      hora("pausaFim", "até", atual?.pausaFim));
+      hora("pausaFim", "até", atual?.pausaFim),
+      hora("filaInicio", "Sequencial das", atual?.filaInicio),
+      hora("filaFim", "até", atual?.filaFim));
     const estadoDia = el("small", { class: "semana__estado" }, atual ? "" : "folga");
     const ativo = el("input", { type: "checkbox", role: "switch", name: `ativo-${dia}`, checked: Boolean(atual) });
     ativo.addEventListener("change", () => {
@@ -1056,7 +1070,9 @@ $("#formExpediente").addEventListener("submit", evento => {
       inicio: valores.get(`inicio-${dia}`),
       fim: valores.get(`fim-${dia}`),
       pausaInicio: valores.get(`pausaInicio-${dia}`),
-      pausaFim: valores.get(`pausaFim-${dia}`)
+      pausaFim: valores.get(`pausaFim-${dia}`),
+      filaInicio: valores.get(`filaInicio-${dia}`),
+      filaFim: valores.get(`filaFim-${dia}`)
     } : null;
   }
   const id = visao.profissionalExpediente;
@@ -1160,6 +1176,7 @@ function editarServico(servico) {
   formServico.elements.preco.value = servico.preco.toFixed(2).replace(".", ",");
   preencherDuracoes(servico.duracao);
   formServico.querySelector(`input[name="icone"][value="${servico.icone}"]`).checked = true;
+  formServico.elements.complementar.checked = Boolean(servico.complementar);
   $("#servicoTitulo").textContent = "Editar serviço";
   $("#salvarServico").textContent = "Salvar alterações";
   $("#cancelarEdicaoServico").hidden = false;
@@ -1177,7 +1194,8 @@ formServico.addEventListener("submit", evento => {
     nome: valores.get("nome"),
     preco: String(valores.get("preco")).replace(/\./g, "").replace(",", "."),
     duracao: valores.get("duracao"),
-    icone: valores.get("icone")
+    icone: valores.get("icone"),
+    complementar: valores.has("complementar")
   };
   enviando(formServico, async () => {
     const pedido = servicoEditado ? atualizarServico(servicoEditado, dados) : criarServico(dados);
@@ -1192,7 +1210,8 @@ formServico.addEventListener("submit", evento => {
 
 function desenharServicos() {
   $("#listaServicos").replaceChildren(...servicosAtivos(estado).map(servico => {
-    const item = registro(servico.nome, `${servico.duracao} min · ${formatarMoeda(servico.preco)}`, async () => {
+    const detalhe = `${servico.duracao} min · ${formatarMoeda(servico.preco)}${servico.complementar ? " · complementar" : ""}`;
+    const item = registro(servico.nome, detalhe, async () => {
       if (!(await resultado(removerServico(servico.id), "Serviço removido."))) return;
       if (servicoEditado === servico.id) sairDaEdicaoServico();
       else desenharServicos();

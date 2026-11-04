@@ -85,6 +85,7 @@
             </div>
           </header>
           <div id="dias" class="dias" role="group" aria-label="Dias"></div>
+          <div id="calendario" class="calendario" hidden></div>
           <div id="horarios" class="horarios" aria-live="polite"></div>
         </section>
 
@@ -145,6 +146,17 @@
         <a class="botao botao--contorno botao--largo" href="/loja"><span data-icone="sacola"></span>Ver produtos da loja</a>
       </div>
     </section>
+
+    <!-- Some sozinho depois de 30 s (DURACAO_DO_LEMBRETE em agendar.js) -->
+    <aside id="lembrete" class="lembrete" role="dialog" aria-labelledby="t-lembrete" aria-describedby="lembreteTexto" hidden>
+      <button id="fecharLembrete" class="lembrete__fechar" type="button" aria-label="Fechar"><span data-icone="fechar"></span></button>
+      <p id="t-lembrete" class="lembrete__titulo">Avise a barbearia</p>
+      <p id="lembreteTexto" class="lembrete__texto">Mande a confirmação no WhatsApp, já com o seu horário escrito.</p>
+      <a id="lembreteLink" class="botao botao--destaque botao--largo" target="_blank" rel="noopener">
+        <span data-icone="mensagem"></span>Confirmar no WhatsApp
+      </a>
+      <span class="lembrete__tempo" aria-hidden="true"></span>
+    </aside>
   </main>
 
   <footer class="rodape">

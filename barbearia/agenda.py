@@ -16,7 +16,7 @@ from django.conf import settings
 from django.db.models import Q
 from django.utils import timezone
 
-INTERVALO_EM_DIAS = {"semanal": 7, "quinzenal": 14}
+INTERVALO_EM_DIAS = {"semanal": 7, "quinzenal": 14, "trissemanal": 21}
 
 
 def parametro(nome):
@@ -42,6 +42,9 @@ class Expediente:
     fim: int
     pausa_inicio: int | None = None
     pausa_fim: int | None = None
+    # Horário sequencial (fila): nesse período, o site mostra só o primeiro horário livre.
+    fila_inicio: int | None = None
+    fila_fim: int | None = None
 
 
 @dataclass(frozen=True)
@@ -84,8 +87,10 @@ class Estado:
     ausencias: list[Ausencia] = field(default_factory=list)
     atendimentos: list[Atendimento] = field(default_factory=list)
     # Atendimentos de cada dia, calculados uma vez só (a lista de horários pergunta o mesmo dia muitas vezes).
-    # Mexeu em `atendimentos` depois de consultar? Limpe com _por_dia.clear().
+    # Mexeu em `atendimentos` depois de consultar? Limpe _por_dia e _primeiro.
     _por_dia: dict = field(default_factory=dict, repr=False)
+    # Primeiro horário livre de (profissional, data, duração), pela mesma razão.
+    _primeiro: dict = field(default_factory=dict, repr=False)
 
     @property
     def hoje(self):
@@ -104,10 +109,12 @@ def carregar_estado(agora=None):
     hoje = agora.date()
     hora = lambda valor: minutos(valor) if valor else None
 
-    estado = Estado(agora=agora, profissionais=list(Profissional.objects.filter(ativo=True).values_list("id", flat=True)))
-    for profissional in Profissional.objects.filter(ativo=True).prefetch_related("expedientes"):
+    ativos = Profissional.objects.filter(ativo=True)
+    estado = Estado(agora=agora, profissionais=list(ativos.values_list("id", flat=True)))
+    for profissional in ativos.prefetch_related("expedientes"):
         estado.expedientes[profissional.id] = {
-            item.dia_semana: Expediente(minutos(item.inicio), minutos(item.fim), hora(item.pausa_inicio), hora(item.pausa_fim))
+            item.dia_semana: Expediente(minutos(item.inicio), minutos(item.fim), hora(item.pausa_inicio), hora(item.pausa_fim),
+                                         hora(item.fila_inicio), hora(item.fila_fim))
             for item in profissional.expedientes.all()
         }
     estado.bloqueios = [
@@ -280,15 +287,45 @@ def profissional_livre(estado, profissional, data, inicio, duracao, ignorar_id=N
     )
 
 
-def escolher_profissional(estado, preferido, datas, inicio, duracao):
+def na_fila(expediente, inicio):
+    """O horário começa dentro do período sequencial (fila) do expediente?"""
+    return bool(expediente) and expediente.fila_inicio is not None and expediente.fila_inicio <= inicio < expediente.fila_fim
+
+
+def primeiro_livre(estado, profissional, data, duracao):
+    """Primeiro horário (em minutos) do período sequencial em que o profissional está livre, ou None.
+    Os candidatos são os mesmos de horarios_livres: a grade e o fim de cada atendimento dele."""
+    chave = (profissional, data, duracao)
+    if chave not in estado._primeiro:
+        expediente = expediente_do_dia(estado, profissional, data)
+        candidatos = set()
+        if expediente and expediente.fila_inicio is not None:
+            candidatos.update(range(expediente.fila_inicio, expediente.fila_fim, parametro("intervalo_minutos")))
+            candidatos.update(item.inicio + item.duracao for item in atendimentos_do_dia(estado, data)
+                              if item.profissional == profissional and na_fila(expediente, item.inicio + item.duracao))
+        estado._primeiro[chave] = next(
+            (inicio for inicio in sorted(candidatos) if profissional_livre(estado, profissional, data, inicio, duracao)), None)
+    return estado._primeiro[chave]
+
+
+def escolher_profissional(estado, preferido, datas, inicio, duracao, fila=False):
     """Com profissional definido, só ele serve. Sem preferência, escolhe quem está livre
-    em todas as datas e tem menos atendimentos no primeiro dia, para dividir os clientes."""
+    em todas as datas e tem menos atendimentos no primeiro dia, para dividir os clientes.
+
+    fila=True (agendamento pelo site): dentro do período sequencial do expediente, o profissional
+    só serve no primeiro horário livre desse período. O painel marca em qualquer horário livre."""
     if not datas:
         return None
     candidatos = [preferido] if preferido else estado.profissionais
+
+    def fora_da_vez(profissional):
+        return (fila and na_fila(expediente_do_dia(estado, profissional, datas[0]), inicio)
+                and primeiro_livre(estado, profissional, datas[0], duracao) != inicio)
+
     livres = [
         profissional for profissional in candidatos
         if all(profissional_livre(estado, profissional, data, inicio, duracao) for data in datas)
+        and not fora_da_vez(profissional)
     ]
     if len(livres) < 2:
         return livres[0] if livres else None
@@ -296,9 +333,10 @@ def escolher_profissional(estado, preferido, datas, inicio, duracao):
     return min(livres, key=lambda profissional: sum(item.profissional == profissional for item in do_dia))
 
 
-def horarios_livres(estado, data, duracao, profissional=None, frequencia="nenhuma", vezes=1):
+def horarios_livres(estado, data, duracao, profissional=None, frequencia="nenhuma", vezes=1, fila=False):
     """Horários de início (em minutos) em que dá para marcar: de 15 em 15 minutos e também no fim
-    de cada atendimento do dia, para encaixar logo depois de um serviço de 20 min sem deixar buraco."""
+    de cada atendimento do dia, para encaixar logo depois de um serviço de 20 min sem deixar buraco.
+    Com fila=True, no período sequencial de cada profissional entra só o primeiro horário livre."""
     if not duracao:
         return []
     ids = [profissional] if profissional else estado.profissionais
@@ -310,9 +348,11 @@ def horarios_livres(estado, data, duracao, profissional=None, frequencia="nenhum
     ultimo = max(item.fim for item in expedientes)
     candidatos = set(range(primeiro, ultimo - duracao + 1, parametro("intervalo_minutos")))
     candidatos.update(item.inicio + item.duracao for item in atendimentos_do_dia(estado, data) if item.profissional in ids)
+    if fila:
+        candidatos.update(inicio for id in ids if (inicio := primeiro_livre(estado, id, data, duracao)) is not None)
     return [
         inicio for inicio in sorted(candidatos)
-        if escolher_profissional(estado, profissional, datas, inicio, duracao)
+        if escolher_profissional(estado, profissional, datas, inicio, duracao, fila)
     ]
 
 

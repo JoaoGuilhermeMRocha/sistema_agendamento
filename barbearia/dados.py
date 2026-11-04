@@ -21,7 +21,7 @@ from PIL import Image, UnidentifiedImageError
 from . import agenda
 from .models import ICONES_DE_SERVICO, Agendamento, Ausencia, Bloqueio, Excecao, Expediente, Produto, Profissional, Servico
 
-FREQUENCIAS = {"nenhuma", "semanal", "quinzenal", "mensal"}
+FREQUENCIAS = {"nenhuma", "semanal", "quinzenal", "trissemanal", "mensal"}
 
 
 class Recusado(Exception):
@@ -138,6 +138,8 @@ def criar_agendamento(*, nome, telefone, servicos, profissional_id, data, inicio
     escolhidos = servicos_escolhidos(servicos)
     if not escolhidos:
         raise Recusado("Escolha pelo menos um serviço.")
+    if all(servico.complementar for servico in escolhidos):
+        raise Recusado(f"{' e '.join(servico.nome for servico in escolhidos)} só pode ser marcado junto com outro serviço.")
     ativos = list(Profissional.objects.filter(ativo=True).values_list("id", flat=True))
     if profissional_id and profissional_id not in ativos:
         raise Recusado("Profissional inválido.")
@@ -155,7 +157,9 @@ def criar_agendamento(*, nome, telefone, servicos, profissional_id, data, inicio
     with transaction.atomic():
         _travar_profissionais([profissional_id] if profissional_id else ativos)
         estado = agenda.carregar_estado()
-        escolhido = agenda.escolher_profissional(estado, profissional_id or None, datas, agenda.minutos(inicio), duracao)
+        # Pelo site, quem trabalha com horário sequencial só aceita o primeiro horário livre do dia.
+        escolhido = agenda.escolher_profissional(
+            estado, profissional_id or None, datas, agenda.minutos(inicio), duracao, fila=not painel)
         if not escolhido:
             raise Recusado("Esse horário não está mais livre. Escolha outro.")
         agendamento = Agendamento.objects.create(
@@ -272,8 +276,13 @@ def salvar_expediente(profissional_id, dias, simular=False):
             item.get("pausaInicio"), item.get("pausaFim"), "A pausa precisa ter início e fim dentro do expediente.")
         if pausa_inicio and not (inicio < pausa_inicio and pausa_fim < fim):
             raise Recusado("A pausa precisa ter início e fim dentro do expediente.")
+        erro_fila = "O horário sequencial precisa ter início e fim dentro do expediente."
+        fila_inicio, fila_fim = _horas_opcionais(item.get("filaInicio"), item.get("filaFim"), erro_fila)
+        if fila_inicio and not (inicio <= fila_inicio and fila_fim <= fim):
+            raise Recusado(erro_fila)
         novos.append(Expediente(profissional=profissional, dia_semana=dia, inicio=inicio, fim=fim,
-                                pausa_inicio=pausa_inicio, pausa_fim=pausa_fim))
+                                pausa_inicio=pausa_inicio, pausa_fim=pausa_fim,
+                                fila_inicio=fila_inicio, fila_fim=fila_fim))
 
     def mudanca():
         profissional.expedientes.all().delete()
@@ -328,8 +337,11 @@ def _campos_do_servico(id, dados):
     if not isinstance(duracao, int) or isinstance(duracao, bool) or not passo <= duracao <= maxima or duracao % passo:
         raise Recusado("Escolha a duração do serviço.")
     icone = dados.get("icone")
+    complementar = dados.get("complementar") is True
+    if complementar and not Servico.objects.filter(removido=False, complementar=False).exclude(pk=id).exists():
+        raise Recusado("Mantenha pelo menos um serviço que não seja complementar.")
     return {"nome": nome[:60], "preco": preco, "duracao": duracao,
-            "icone": icone if icone in dict(ICONES_DE_SERVICO) else "tesoura"}
+            "icone": icone if icone in dict(ICONES_DE_SERVICO) else "tesoura", "complementar": complementar}
 
 
 def criar_servico(dados):
@@ -356,6 +368,8 @@ def remover_servico(id):
             raise Recusado("Esse serviço não existe mais.")
         if len(ativos) == 1:
             raise Recusado("Mantenha pelo menos um serviço para os clientes escolherem.")
+        if not servico.complementar and not any(not item.complementar for item in ativos if item != servico):
+            raise Recusado("Mantenha pelo menos um serviço que não seja complementar.")
         servico.removido = True
         servico.save(update_fields=["removido"])
 

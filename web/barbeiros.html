@@ -112,6 +112,7 @@
         </summary>
         <div class="cartao__corpo">
           <div id="profExpediente" class="chips" role="group" aria-label="Profissional"></div>
+          <p class="cartao__texto"><strong>Sequencial</strong> (opcional): nesse período, o cliente vê só o próximo horário livre, como uma fila, e a agenda enche em sequência, sem buracos. Pelo painel, dá para marcar em qualquer horário livre.</p>
           <form id="formExpediente" novalidate>
             <div id="semana" class="semana"></div>
             <p id="expedienteErro" class="campo__erro" role="alert"></p>
@@ -233,6 +234,10 @@
           <legend class="campo__rotulo">Símbolo na agenda</legend>
           <div id="servicoIcones" class="chips" role="radiogroup" aria-label="Símbolo na agenda"></div>
         </fieldset>
+        <label class="alternador alternador--texto">
+          <span>Complementar<small>Só aparece para o cliente depois que ele escolhe outro serviço, e não pode ser marcado sozinho. Ex.: pezinho, sobrancelha.</small></span>
+          <input name="complementar" type="checkbox" role="switch">
+        </label>
         <p class="campo__erro" role="alert"></p>
         <button id="salvarServico" class="botao botao--enfase botao--largo" type="submit">Adicionar serviço</button>
       </form>
@@ -439,6 +444,7 @@
               <option value="nenhuma">Só desta vez</option>
               <option value="semanal">Toda semana</option>
               <option value="quinzenal">A cada 15 dias</option>
+              <option value="trissemanal">A cada 3 semanas</option>
               <option value="mensal">Todo mês</option>
             </select>
           </label>

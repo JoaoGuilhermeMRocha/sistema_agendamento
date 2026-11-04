@@ -20,7 +20,7 @@ from django.utils import timezone
 from PIL import Image
 
 from barbearia import dados
-from barbearia.models import Agendamento, Excecao, Profissional, Servico
+from barbearia.models import Agendamento, Excecao, Expediente, Profissional, Servico
 
 DADOS_INICIAIS = str(settings.BASE_DIR / "clientes" / "santiago" / "dados_iniciais.json")
 CABELO, BARBA, SOBRANCELHA = "1", "2", "3"
@@ -70,11 +70,15 @@ class PublicoTests(ApiTestCase):
         self.assertEqual(self.client.head("/api/publico/vitrine").status_code, 200)
         self.assertEqual(self.client.head("/api/painel/estado").status_code, 401)
 
-    def test_horarios_dos_proximos_14_dias(self):
-        status, resposta = self.chamar("get", f"/api/publico/horarios?servicos={CABELO},{BARBA}")
+    def test_horarios_dos_proximos_dias(self):
+        status, resposta = self.chamar("get", f"/api/publico/horarios?servicos={CABELO},{BARBA}&dias=15")
         self.assertEqual(status, 200)
         dias = {dia["data"]: dia for dia in resposta["dias"]}
-        self.assertEqual(len(dias), 14)
+        self.assertEqual(len(dias), 15)
+        # Sem o número de dias, vai até o fim da agenda aberta; pedir mais não passa disso.
+        for busca in ["", "&dias=500", "&dias=abc"]:
+            _, resposta = self.chamar("get", f"/api/publico/horarios?servicos={CABELO}{busca}")
+            self.assertEqual(len(resposta["dias"]), settings.AGENDA["dias_para_agendar"])
 
         terca = dias[proxima(2).isoformat()]
         self.assertFalse(terca["fechado"])
@@ -122,7 +126,7 @@ class PublicoTests(ApiTestCase):
             ({"profissionalId": "fulano"}, "Profissional inválido."),
             ({"data": "2026-02-30"}, "Escolha o dia e o horário."),
             ({"inicio": "25:00"}, "Escolha o dia e o horário."),
-            ({"data": (timezone.localdate() + timedelta(days=30)).isoformat()},
+            ({"data": (timezone.localdate() + timedelta(days=settings.AGENDA["dias_para_agendar"])).isoformat()},
              "Esse dia ainda não está aberto para agendamento."),
             ({"data": proxima(0).isoformat()}, "Esse horário não está mais livre. Escolha outro."),  # domingo
             ({"data": (timezone.localdate() - timedelta(days=1)).isoformat()},
@@ -158,6 +162,82 @@ class PublicoTests(ApiTestCase):
         self.assertEqual(self.client.get("/api/publico/agendamentos").status_code, 405)
 
 
+class FilaEComplementarTests(ApiTestCase):
+    def test_fila_mostra_e_aceita_so_o_primeiro_horario_do_periodo(self):
+        Expediente.objects.filter(profissional="santiago", dia_semana=2).update(fila_inicio="13:00", fila_fim="18:00")
+        terca = proxima(2).isoformat()
+        horarios = lambda: next(item for item in self.chamar("get", "/api/publico/horarios?profissional=santiago&dias=15")[1]["dias"]
+                                if item["data"] == terca)
+        dia = horarios()
+        self.assertEqual(dia["sequencial"], {"inicio": "13:00", "fim": "18:00"})
+        self.assertIn("10:00", dia["horarios"])  # de manhã, horários livres
+        self.assertEqual([hora for hora in dia["horarios"] if hora >= "13:00"], ["13:00"])
+
+        status, resposta = self.agendar(profissionalId="santiago", data=terca, inicio="14:00")
+        self.assertEqual((status, resposta["erro"]), (400, "Esse horário não está mais livre. Escolha outro."))
+        _, resposta = self.agendar(profissionalId="santiago", data=terca, inicio="13:00")
+        self.assertTrue(resposta["ok"])
+        self.assertEqual([hora for hora in horarios()["horarios"] if hora >= "13:00"], ["13:30"])  # cabelo = 30 min
+
+        # Sem preferência, o horário das 14h vai para o Damigo, que não tem período sequencial.
+        _, resposta = self.agendar(nome="Bruno", data=terca, inicio="14:00")
+        self.assertEqual(resposta["agendamento"]["profissionalId"], "damigo")
+        _, sem_preferencia = self.chamar("get", "/api/publico/horarios?dias=15")
+        self.assertIsNone(sem_preferencia["dias"][0]["sequencial"])
+
+        # O painel marca em qualquer horário livre.
+        self.client.force_login(self.barbeiro("santiago"))
+        _, resposta = self.chamar("post", "/api/painel/agendamentos", {
+            "nome": "Carla", "telefone": "43999998888", "servicos": [CABELO], "profissionalId": "santiago",
+            "data": terca, "inicio": "15:00"})
+        self.assertTrue(resposta["ok"])
+
+    def test_periodo_sequencial_no_expediente(self):
+        self.client.force_login(self.barbeiro("santiago"))
+        dia = {"inicio": "09:00", "fim": "18:00", "pausaInicio": "12:00", "pausaFim": "13:00"}
+        for fila, erro in [({"filaInicio": "08:00", "filaFim": "12:00"}, True), ({"filaInicio": "14:00", "filaFim": ""}, True),
+                           ({"filaInicio": "15:00", "filaFim": "14:00"}, True), ({"filaInicio": "13:00", "filaFim": "18:00"}, False)]:
+            with self.subTest(fila=fila):
+                _, resposta = self.chamar("put", "/api/painel/expedientes/santiago", {"dias": {"2": {**dia, **fila}}})
+                if erro:
+                    self.assertEqual(resposta["erro"], "O horário sequencial precisa ter início e fim dentro do expediente.")
+                else:
+                    self.assertTrue(resposta["ok"])
+        _, estado = self.chamar("get", "/api/painel/estado")
+        self.assertEqual(estado["expedientes"]["santiago"]["2"],
+                         {**dia, "filaInicio": "13:00", "filaFim": "18:00"})
+
+    def test_complementar_nao_pode_ser_marcado_sozinho(self):
+        Servico.objects.filter(pk=SOBRANCELHA).update(complementar=True)
+        status, resposta = self.agendar(servicos=[SOBRANCELHA])
+        self.assertEqual((status, resposta["erro"]), (400, "Sobrancelha só pode ser marcado junto com outro serviço."))
+        _, resposta = self.agendar(servicos=[CABELO, SOBRANCELHA])
+        self.assertTrue(resposta["ok"])
+
+        self.client.force_login(self.barbeiro("santiago"))
+        _, resposta = self.chamar("post", "/api/painel/agendamentos", {
+            "nome": "Ana", "telefone": "43999998888", "servicos": [SOBRANCELHA], "profissionalId": "santiago",
+            "data": proxima(3).isoformat(), "inicio": "10:00"})
+        self.assertEqual(resposta["erro"], "Sobrancelha só pode ser marcado junto com outro serviço.")
+
+        # Sem serviço escolhido, os horários usam o comum mais curto (cabelo, 30 min), não o complementar.
+        _, resposta = self.chamar("get", "/api/publico/horarios?dias=15")
+        terca = next(item for item in resposta["dias"] if item["data"] == proxima(2).isoformat())
+        self.assertNotIn("11:45", terca["horarios"])  # 11h45 + 30 min invade a pausa
+
+    def test_sempre_sobra_um_servico_comum(self):
+        self.client.force_login(self.barbeiro("santiago"))
+        _, resposta = self.chamar("put", f"/api/painel/servicos/{BARBA}",
+                                  {"nome": "Barba", "preco": 25, "duracao": 30, "complementar": True})
+        self.assertTrue(resposta["servico"]["complementar"])
+        self.chamar("delete", f"/api/painel/servicos/{SOBRANCELHA}")
+        _, resposta = self.chamar("put", f"/api/painel/servicos/{CABELO}",
+                                  {"nome": "Cabelo", "preco": 30, "duracao": 30, "complementar": True})
+        self.assertEqual(resposta["erro"], "Mantenha pelo menos um serviço que não seja complementar.")
+        _, resposta = self.chamar("delete", f"/api/painel/servicos/{CABELO}")
+        self.assertEqual(resposta["erro"], "Mantenha pelo menos um serviço que não seja complementar.")
+
+
 class PainelTests(ApiTestCase):
     def setUp(self):
         super().setUp()
@@ -174,7 +254,8 @@ class PainelTests(ApiTestCase):
         self.assertEqual(set(estado), {"ok", "hoje", "ferramentasDeTeste", "eu", "profissionais", "agendamentos", "ausencias", "bloqueios",
                                        "expedientes", "servicos", "produtos"})
         self.assertEqual(estado["expedientes"]["santiago"]["2"],
-                         {"inicio": "09:00", "fim": "18:00", "pausaInicio": "12:00", "pausaFim": "13:00"})
+                         {"inicio": "09:00", "fim": "18:00", "pausaInicio": "12:00", "pausaFim": "13:00",
+                          "filaInicio": "", "filaFim": ""})
         self.assertIsNone(estado["expedientes"]["santiago"]["0"])
         self.assertEqual(estado["agendamentos"][0]["servicos"], [CABELO])
 

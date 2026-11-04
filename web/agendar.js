@@ -1,5 +1,8 @@
 import { config } from "./config.js";
-import { formatarData, formatarMoeda, hoje, profissionalPorId, servicosAtivos, somarDias, somarServicos } from "./agenda.js";
+import {
+  formatarData, formatarMoeda, hoje, inicioDaSemana, paraChave, profissionalPorId, servicosAtivos, somarDias,
+  somarServicos, temServicoComum
+} from "./agenda.js";
 import { aoMudar, carregarVitrine, criarAgendamento, horariosDisponiveis } from "./dados.js";
 import {
   $, aplicarIcones, capitalizar, el, formatarTelefone, icone, linkWhatsApp, mascararTelefone,
@@ -28,20 +31,34 @@ const pronto = () => escolha.servicos.length && escolha.data && escolha.horario;
 
 /* Etapa 1: serviços */
 
+const botaoDeServico = servico => el("button", {
+  type: "button",
+  class: "servico",
+  "data-servico": servico.id,
+  "aria-pressed": String(escolha.servicos.includes(servico.id))
+},
+el("span", { class: "servico__marca" }, icone("check")),
+el("span", { class: "servico__nome" }, servico.nome),
+el("span", { class: "servico__info numeros" }, `${servico.duracao} min`),
+el("strong", { class: "servico__preco numeros" }, formatarMoeda(servico.preco)));
+
+// Sem serviço comum escolhido, os complementares (pezinho, sobrancelha...) saem da escolha.
+function limparComplementares() {
+  if (!temServicoComum(estado, escolha.servicos)) escolha.servicos = [];
+}
+
+// Os complementares só aparecem depois que o cliente escolhe um serviço comum.
 function desenharServicos() {
   // O painel pode ter removido um serviço que estava escolhido.
   const ativos = servicosAtivos(estado);
   escolha.servicos = escolha.servicos.filter(id => ativos.some(servico => servico.id === id));
-  $("#servicos").replaceChildren(...ativos.map(servico => el("button", {
-    type: "button",
-    class: "servico",
-    "data-servico": servico.id,
-    "aria-pressed": String(escolha.servicos.includes(servico.id))
-  },
-  el("span", { class: "servico__marca" }, icone("check")),
-  el("span", { class: "servico__nome" }, servico.nome),
-  el("span", { class: "servico__info numeros" }, `${servico.duracao} min`),
-  el("strong", { class: "servico__preco numeros" }, formatarMoeda(servico.preco)))));
+  limparComplementares();
+  const complementares = ativos.filter(servico => servico.complementar);
+  $("#servicos").replaceChildren(
+    ...ativos.filter(servico => !servico.complementar).map(botaoDeServico),
+    complementares.length ? el("div", { id: "complementos", class: "complementos", hidden: !escolha.servicos.length },
+      el("p", { class: "complementos__titulo" }, "Quer completar?"),
+      ...complementares.map(botaoDeServico)) : "");
 }
 
 $("#servicos").addEventListener("click", evento => {
@@ -51,7 +68,11 @@ $("#servicos").addEventListener("click", evento => {
   escolha.servicos = escolha.servicos.includes(id)
     ? escolha.servicos.filter(item => item !== id)
     : servicosAtivos(estado).map(servico => servico.id).filter(item => item === id || escolha.servicos.includes(item));
-  botao.setAttribute("aria-pressed", String(escolha.servicos.includes(id)));
+  limparComplementares();
+  for (const opcao of $("#servicos").querySelectorAll("[data-servico]")) {
+    opcao.setAttribute("aria-pressed", String(escolha.servicos.includes(opcao.dataset.servico)));
+  }
+  if ($("#complementos")) $("#complementos").hidden = !escolha.servicos.length;
   atualizarAgenda();
 });
 
@@ -90,46 +111,161 @@ $("#profissionais").addEventListener("click", evento => {
 
 /* Etapa 3: dia e horário */
 
+const { diasNaLista, diasParaAgendar } = config.agenda;
+// Os primeiros dias ficam na lista; o resto, até diasParaAgendar, no calendário de "Ver mais datas".
+// Os dias do calendário só são buscados depois que o cliente abre o calendário.
+const vagas = {
+  todos: false,
+  dias: [],
+  livres: new Map(),
+  fechados: new Set(),
+  // Período de horário sequencial (fila) do profissional escolhido em cada dia, ou null.
+  sequencial: new Map(),
+  erro: ""
+};
+// mes: primeiro dia do mês mostrado ("AAAA-MM-01"); null volta para o mês do dia escolhido.
+const calendario = { aberto: false, mes: null };
+
 function rotuloDia(data) {
   if (data === hoje()) return "Hoje";
   if (data === somarDias(hoje(), 1)) return "Amanhã";
   return formatarData(data, { weekday: "short" }).replace(".", "");
 }
 
-async function desenharDias() {
-  // Sem serviço escolhido, o servidor usa o mais curto para os dias não aparecerem todos como lotados.
+const nomeDoDia = data => formatarData(data, { weekday: "long", day: "numeric", month: "long" });
+const temHorario = data => Boolean(vagas.livres.get(data)?.length);
+
+// Sem serviço escolhido, o servidor usa o mais curto para os dias não aparecerem todos como lotados.
+// Devolve false quando a resposta chegou atrasada (já há uma busca mais nova).
+async function buscarDias() {
   const numero = ++buscaDeHorarios;
-  const resposta = await horariosDisponiveis({ servicos: escolha.servicos, profissionalId: escolha.profissionalId });
-  if (numero !== buscaDeHorarios) return;
-  if (!resposta.ok) {
-    $("#horarios").replaceChildren(el("p", { class: "horarios__aviso" }, resposta.erro));
+  const resposta = await horariosDisponiveis({
+    servicos: escolha.servicos,
+    profissionalId: escolha.profissionalId,
+    dias: vagas.todos ? diasParaAgendar : diasNaLista
+  });
+  if (numero !== buscaDeHorarios) return false;
+  vagas.erro = resposta.ok ? "" : resposta.erro;
+  if (resposta.ok) {
+    vagas.dias = resposta.dias.map(dia => dia.data);
+    vagas.livres = new Map(resposta.dias.map(dia => [dia.data, dia.horarios]));
+    vagas.fechados = new Set(resposta.dias.filter(dia => dia.fechado).map(dia => dia.data));
+    vagas.sequencial = new Map(resposta.dias.map(dia => [dia.data, dia.sequencial]));
+  }
+  return true;
+}
+
+function botaoDia(data) {
+  const disponivel = temHorario(data);
+  return el("button", {
+    type: "button",
+    class: "dia",
+    "data-dia": data,
+    "aria-pressed": String(data === escolha.data),
+    "aria-label": `${nomeDoDia(data)}${disponivel ? "" : ", sem horários"}`,
+    disabled: !disponivel
+  },
+  el("span", { class: "dia__semana" }, rotuloDia(data)),
+  el("strong", { class: "dia__numero numeros" }, formatarData(data, { day: "numeric" })),
+  el("span", { class: "dia__mes" }, vagas.fechados.has(data) ? "fechado" : disponivel
+    ? formatarData(data, { month: "short" }).replace(".", "") : "lotado"));
+}
+
+// No lugar do 16º dia: abre o calendário. Com um dia do calendário escolhido, mostra esse dia.
+function botaoMaisDatas() {
+  const fora = escolha.data && !vagas.dias.slice(0, diasNaLista).includes(escolha.data);
+  return el("button", {
+    type: "button",
+    id: "maisDatas",
+    class: "dia dia--mais",
+    "aria-expanded": String(calendario.aberto),
+    "aria-controls": "calendario",
+    "aria-pressed": fora ? "true" : null,
+    "aria-label": fora ? `${nomeDoDia(escolha.data)}. Ver mais datas disponíveis` : "Ver mais datas disponíveis"
+  }, fora ? [
+    el("span", { class: "dia__semana" }, rotuloDia(escolha.data)),
+    el("strong", { class: "dia__numero numeros" }, formatarData(escolha.data, { day: "numeric" })),
+    el("span", { class: "dia__mes" }, icone("calendario"), formatarData(escolha.data, { month: "short" }).replace(".", ""))
+  ] : [icone("calendario"), el("span", { class: "dia__mais" }, "Ver mais datas")]);
+}
+
+function desenharDias() {
+  if (vagas.erro) {
+    $("#horarios").replaceChildren(el("p", { class: "horarios__aviso" }, vagas.erro));
     return;
   }
-  const dias = resposta.dias.map(dia => dia.data);
-  const livres = new Map(resposta.dias.map(dia => [dia.data, dia.horarios]));
-  const fechados = new Set(resposta.dias.filter(dia => dia.fechado).map(dia => dia.data));
+  if (escolha.data && !temHorario(escolha.data)) escolha.data = null;
+  escolha.data ??= vagas.dias.find(temHorario) || null;
 
-  if (escolha.data && !livres.get(escolha.data)?.length) escolha.data = null;
-  escolha.data ??= dias.find(data => livres.get(data).length) || null;
+  $("#dias").replaceChildren(...vagas.dias.slice(0, diasNaLista).map(botaoDia), botaoMaisDatas());
+  desenharCalendario();
+  desenharHorarios(vagas.livres.get(escolha.data) || []);
+}
 
-  $("#dias").replaceChildren(...dias.map(data => {
-    const disponivel = livres.get(data).length > 0;
-    const fechado = fechados.has(data);
-    return el("button", {
+// Mês a mês, de segunda a domingo, como o mini calendário do painel. Só os dias com horário são botões.
+function desenharCalendario() {
+  const area = $("#calendario");
+  area.hidden = !calendario.aberto;
+  if (!calendario.aberto) return;
+  if (!vagas.todos) {
+    area.replaceChildren(el("p", { class: "calendario__aviso" }, "Carregando as datas…"));
+    return;
+  }
+
+  const primeiro = hoje();
+  const ultimo = somarDias(primeiro, diasParaAgendar - 1);
+  const mesDe = data => `${data.slice(0, 8)}01`;
+  calendario.mes ??= mesDe(escolha.data || primeiro);
+  calendario.mes = [mesDe(primeiro), calendario.mes, mesDe(ultimo)].sort()[1];
+  const [ano, mes] = calendario.mes.split("-").map(Number);
+  const fimDoMes = paraChave(new Date(ano, mes, 0));
+
+  const dias = [];
+  for (let data = inicioDaSemana(calendario.mes); data <= fimDoMes || dias.length % 7; data = somarDias(data, 1)) {
+    const numero = Number(data.slice(8));
+    if (data.slice(0, 8) !== calendario.mes.slice(0, 8)) dias.push(el("span", { class: "calendario__dia calendario__dia--vazio" }));
+    else if (data < primeiro || data > ultimo) dias.push(el("span", { class: "calendario__dia calendario__dia--fora" }, numero));
+    else dias.push(el("button", {
       type: "button",
-      class: "dia",
+      class: `calendario__dia${data === primeiro ? " calendario__dia--hoje" : ""}`,
       "data-dia": data,
       "aria-pressed": String(data === escolha.data),
-      "aria-label": `${formatarData(data, { weekday: "long", day: "numeric", month: "long" })}${disponivel ? "" : ", sem horários"}`,
-      disabled: !disponivel
-    },
-    el("span", { class: "dia__semana" }, rotuloDia(data)),
-    el("strong", { class: "dia__numero numeros" }, formatarData(data, { day: "numeric" })),
-    el("span", { class: "dia__mes" }, fechado ? "fechado" : disponivel
-      ? formatarData(data, { month: "short" }).replace(".", "") : "lotado"));
-  }));
+      "aria-label": `${nomeDoDia(data)}${temHorario(data) ? "" : vagas.fechados.has(data) ? ", fechado" : ", sem horários"}`,
+      disabled: !temHorario(data)
+    }, numero));
+  }
 
-  desenharHorarios(livres.get(escolha.data) || []);
+  const titulo = new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(new Date(ano, mes - 1, 1));
+  const seta = (passo, rotulo, nome, limite) => el("button", {
+    type: "button", class: "calendario__seta", "data-mes": passo, "aria-label": rotulo, disabled: calendario.mes === limite
+  }, icone(nome));
+  area.replaceChildren(
+    el("div", { class: "calendario__topo" },
+      seta(-1, "Mês anterior", "voltar", mesDe(primeiro)),
+      el("strong", { class: "calendario__mes", "aria-live": "polite" }, capitalizar(titulo)),
+      seta(1, "Próximo mês", "seta", mesDe(ultimo))),
+    el("div", { class: "calendario__semana", "aria-hidden": "true" },
+      ["S", "T", "Q", "Q", "S", "S", "D"].map(letra => el("span", {}, letra))),
+    el("div", { class: "calendario__grade", role: "group", "aria-label": capitalizar(titulo) }, dias));
+}
+
+async function abrirCalendario(aberto) {
+  calendario.aberto = aberto;
+  calendario.mes = null;
+  desenharDias();
+  if (aberto && !vagas.todos) {
+    vagas.todos = true;
+    await atualizarAgenda();
+  }
+  if (aberto) $("#calendario").scrollIntoView({ block: "nearest" });
+}
+
+function escolherDia(data) {
+  escolha.data = data;
+  escolha.horario = null;
+  calendario.aberto = false;
+  desenharDias();
+  desenharResumo();
 }
 
 function grupoDoHorario(horario) {
@@ -146,9 +282,13 @@ function desenharHorarios(horarios) {
     return;
   }
   if (!escolha.data) {
-    area.replaceChildren(el("p", { class: "horarios__aviso" }, "Nenhum horário livre nos próximos dias. Tente outro profissional."));
+    area.replaceChildren(el("p", { class: "horarios__aviso" },
+      `Nenhum horário livre nos próximos ${vagas.todos ? diasParaAgendar : diasNaLista} dias. Tente outro profissional.`));
     return;
   }
+
+  // Horário sequencial: nesse período do dia, o profissional mostra só o próximo horário livre.
+  const fila = vagas.sequencial.get(escolha.data);
 
   const grupos = new Map();
   for (const horario of horarios) {
@@ -156,7 +296,9 @@ function desenharHorarios(horarios) {
     grupos.set(grupo, [...(grupos.get(grupo) || []), horario]);
   }
   area.replaceChildren(
-    el("p", { class: "horarios__dia" }, capitalizar(formatarData(escolha.data, { weekday: "long", day: "numeric", month: "long" }))),
+    el("p", { class: "horarios__dia" }, capitalizar(nomeDoDia(escolha.data))),
+    fila ? el("p", { class: "horarios__fila" }, icone("relogio"),
+      `Das ${fila.inicio} às ${fila.fim}, ${profissionalPorId(escolha.profissionalId)?.nome} atende em sequência: aparece só o próximo horário livre desse período.`) : "",
     ...[...grupos].map(([nome, lista]) => el("div", { class: "horarios__grupo" },
       el("h3", {}, nome),
       el("div", { class: "horarios__grade" }, lista.map((horario, indice) => el("button", {
@@ -169,11 +311,36 @@ function desenharHorarios(horarios) {
 }
 
 $("#dias").addEventListener("click", evento => {
+  if (evento.target.closest("#maisDatas")) {
+    abrirCalendario(!calendario.aberto);
+    return;
+  }
+  const botao = evento.target.closest("[data-dia]");
+  if (botao && !botao.disabled) escolherDia(botao.dataset.dia);
+});
+
+$("#calendario").addEventListener("click", evento => {
+  const seta = evento.target.closest("[data-mes]");
+  if (seta && !seta.disabled) {
+    const [ano, mes] = calendario.mes.split("-").map(Number);
+    calendario.mes = paraChave(new Date(ano, mes - 1 + Number(seta.dataset.mes), 1));
+    desenharCalendario();
+    return;
+  }
   const botao = evento.target.closest("[data-dia]");
   if (!botao || botao.disabled) return;
-  escolha.data = botao.dataset.dia;
-  escolha.horario = null;
-  atualizarAgenda();
+  escolherDia(botao.dataset.dia);
+  $("#maisDatas").focus({ preventScroll: true });
+  $("#etapaHorario").scrollIntoView({ block: "start" });
+});
+
+document.addEventListener("keydown", evento => {
+  if (evento.key !== "Escape") return;
+  if (calendario.aberto) {
+    abrirCalendario(false);
+    $("#maisDatas").focus();
+  }
+  if (!$("#lembrete").hidden) fecharLembrete();
 });
 
 $("#horarios").addEventListener("click", evento => {
@@ -214,7 +381,13 @@ function desenharResumo() {
 
 async function atualizarAgenda() {
   desenharResumo();
-  await desenharDias();
+  if (!(await buscarDias())) return;
+  // Nada livre na lista: já busca os dias do calendário.
+  if (!vagas.erro && !vagas.todos && !vagas.dias.some(temHorario)) {
+    vagas.todos = true;
+    if (!(await buscarDias())) return;
+  }
+  desenharDias();
   desenharResumo();
 }
 
@@ -292,9 +465,10 @@ function mostrarConfirmacao(agendamento) {
   ].map(([rotulo, valor]) => el("div", {}, el("dt", {}, rotulo), el("dd", {}, valor))));
 
   if (config.whatsapp) {
-    $("#falarBarbearia").href = linkWhatsApp(config.whatsapp,
-      `Olá! Acabei de marcar ${nomes} para ${formatarData(agendamento.data)} às ${agendamento.inicio}.`);
+    const link = linkWhatsApp(config.whatsapp, mensagemDeConfirmacao(agendamento, nomes, profissional));
+    $("#falarBarbearia").href = link;
     $("#falarBarbearia").hidden = false;
+    mostrarLembrete(link);
   }
 
   $("#areaAgendamento").hidden = true;
@@ -304,9 +478,44 @@ function mostrarConfirmacao(agendamento) {
   window.scrollTo({ top: 0 });
 }
 
+/* Lembrete: popup que convida o cliente a confirmar pelo WhatsApp e some sozinho */
+
+const DURACAO_DO_LEMBRETE = 30000;
+let temporizadorDoLembrete;
+
+function mensagemDeConfirmacao(agendamento, nomes, profissional) {
+  return [
+    "Olá! Acabei de agendar pelo site e quero confirmar meu horário:",
+    `• Serviço: ${nomes}`,
+    `• Dia: ${formatarData(agendamento.data, { weekday: "long", day: "2-digit", month: "2-digit" })}, às ${agendamento.inicio}`,
+    `• Profissional: ${profissional}`,
+    `• Nome: ${agendamento.cliente.nome}`
+  ].join("\n");
+}
+
+function mostrarLembrete(link) {
+  const lembrete = $("#lembrete");
+  $("#lembreteLink").href = link;
+  lembrete.style.setProperty("--duracao-lembrete", `${DURACAO_DO_LEMBRETE}ms`);
+  lembrete.hidden = false;
+  clearTimeout(temporizadorDoLembrete);
+  temporizadorDoLembrete = setTimeout(fecharLembrete, DURACAO_DO_LEMBRETE);
+}
+
+function fecharLembrete() {
+  clearTimeout(temporizadorDoLembrete);
+  $("#lembrete").hidden = true;
+}
+
+$("#fecharLembrete").addEventListener("click", fecharLembrete);
+// Fecha depois que o WhatsApp abre (na mesma volta, cancelaria a abertura do link).
+$("#lembreteLink").addEventListener("click", () => setTimeout(fecharLembrete));
+
 $("#novoAgendamento").addEventListener("click", async () => {
+  fecharLembrete();
   escolha.data = null;
   escolha.horario = null;
+  calendario.aberto = false;
   const novo = await carregarVitrine();
   if (novo.ok) estado = novo;
   $("#confirmado").hidden = true;

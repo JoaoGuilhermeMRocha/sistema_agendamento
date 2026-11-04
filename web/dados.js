@@ -67,8 +67,9 @@ export function aoMudar(buscar, callback, intervalo = 30000) {
 
 export const carregarVitrine = async () => aplicarProfissionais(await pedir("GET", "publico/vitrine"));
 
-export function horariosDisponiveis({ servicos, profissionalId }) {
-  const busca = new URLSearchParams({ servicos: servicos.join(","), profissional: profissionalId ?? "" });
+// dias: quantos dias a partir de hoje (o servidor limita a config.agenda.diasParaAgendar).
+export function horariosDisponiveis({ servicos, profissionalId, dias }) {
+  const busca = new URLSearchParams({ servicos: servicos.join(","), profissional: profissionalId ?? "", dias: dias ?? "" });
   return pedir("GET", `publico/horarios?${busca}`);
 }
 
@@ -110,7 +111,8 @@ export const atualizarProfissional = (id, dados) => pedir("PUT", `painel/profiss
 
 /* Painel: serviços e produtos */
 
-const camposDoServico = ({ nome, preco, duracao, icone }) => ({ nome, preco, duracao: Number(duracao), icone });
+const camposDoServico = ({ nome, preco, duracao, icone, complementar }) =>
+  ({ nome, preco, duracao: Number(duracao), icone, complementar: Boolean(complementar) });
 export const criarServico = dados => pedir("POST", "painel/servicos", camposDoServico(dados));
 export const atualizarServico = (id, dados) => pedir("PUT", `painel/servicos/${id}`, camposDoServico(dados));
 export const removerServico = id => pedir("DELETE", `painel/servicos/${id}`);
