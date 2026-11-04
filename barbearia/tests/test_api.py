@@ -242,8 +242,12 @@ class PainelTests(ApiTestCase):
         id = resposta["servico"]["id"]
         _, resposta = self.chamar("post", "/api/painel/servicos", {"nome": "cabelo", "preco": 10, "duracao": 15})
         self.assertEqual(resposta["erro"], "Já existe um serviço com esse nome.")
-        _, resposta = self.chamar("post", "/api/painel/servicos", {"nome": "Luzes", "preco": 10, "duracao": 20})
+        _, resposta = self.chamar("post", "/api/painel/servicos", {"nome": "Luzes", "preco": 10, "duracao": 22})
         self.assertEqual(resposta["erro"], "Escolha a duração do serviço.")
+        _, resposta = self.chamar("post", "/api/painel/servicos", {"nome": "Luzes", "preco": 10, "duracao": 245})
+        self.assertEqual(resposta["erro"], "Escolha a duração do serviço.")
+        _, resposta = self.chamar("put", f"/api/painel/servicos/{id}", {"nome": "Pigmentação", "preco": 40, "duracao": 20})
+        self.assertTrue(resposta["ok"])
 
         # Mudar o preço não altera quem já marcou.
         self.novo()

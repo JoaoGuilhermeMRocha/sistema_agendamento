@@ -297,7 +297,8 @@ def escolher_profissional(estado, preferido, datas, inicio, duracao):
 
 
 def horarios_livres(estado, data, duracao, profissional=None, frequencia="nenhuma", vezes=1):
-    """Horários de início (em minutos) em que dá para marcar, de 15 em 15 minutos."""
+    """Horários de início (em minutos) em que dá para marcar: de 15 em 15 minutos e também no fim
+    de cada atendimento do dia, para encaixar logo depois de um serviço de 20 min sem deixar buraco."""
     if not duracao:
         return []
     ids = [profissional] if profissional else estado.profissionais
@@ -307,8 +308,10 @@ def horarios_livres(estado, data, duracao, profissional=None, frequencia="nenhum
     datas = datas_da_serie(data, frequencia, vezes)
     primeiro = min(item.inicio for item in expedientes)
     ultimo = max(item.fim for item in expedientes)
+    candidatos = set(range(primeiro, ultimo - duracao + 1, parametro("intervalo_minutos")))
+    candidatos.update(item.inicio + item.duracao for item in atendimentos_do_dia(estado, data) if item.profissional in ids)
     return [
-        inicio for inicio in range(primeiro, ultimo - duracao + 1, parametro("intervalo_minutos"))
+        inicio for inicio in sorted(candidatos)
         if escolher_profissional(estado, profissional, datas, inicio, duracao)
     ]
 

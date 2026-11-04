@@ -176,6 +176,13 @@ class HorariosLivresTests(SimpleTestCase):
         ])
         self.assertNotIn(h("10:00"), agenda.horarios_livres(dois, TERCA, 30))
 
+    def test_oferece_o_fim_de_cada_atendimento(self):
+        base = estado(atendimentos=[atendimento(profissional="santiago", inicio="09:00", duracao=20)])
+        horarios = agenda.horarios_livres(base, TERCA, 30, profissional="santiago")
+        self.assertEqual(horarios[:3], [h("09:20"), h("09:30"), h("09:45")])
+        # O fim do atendimento de um colega não entra quando o cliente escolheu outro profissional.
+        self.assertNotIn(h("09:20"), agenda.horarios_livres(base, TERCA, 30, profissional="damigo"))
+
     def test_dia_de_folga_nao_tem_horario(self):
         self.assertEqual(agenda.horarios_livres(estado(), date(2026, 11, 8), 30), [])  # domingo
         self.assertTrue(agenda.dia_fechado(estado(), date(2026, 11, 8)))

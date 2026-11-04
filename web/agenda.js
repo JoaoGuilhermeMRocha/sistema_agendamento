@@ -243,11 +243,15 @@ export function horariosLivres(estado, { data, repeticao, duracao, profissionalI
   const datas = datasDaSerie(data, repeticao);
   const primeiro = Math.min(...expedientes.map(item => minutos(item.inicio)));
   const ultimo = Math.max(...expedientes.map(item => minutos(item.fim)));
-  const horarios = [];
-  for (let inicio = primeiro; inicio + duracao <= ultimo; inicio += config.agenda.intervaloMinutos) {
-    if (escolherProfissional(estado, profissionalId, datas, inicio, duracao)) horarios.push(horaTexto(inicio));
+  // Além da grade de 15 em 15, o fim de cada atendimento do dia: encaixa logo depois sem deixar buraco.
+  const candidatos = new Set();
+  for (let inicio = primeiro; inicio + duracao <= ultimo; inicio += config.agenda.intervaloMinutos) candidatos.add(inicio);
+  for (const agendamento of atendimentosDoDia(estado, data)) {
+    if (ids.includes(agendamento.profissionalId)) candidatos.add(minutos(agendamento.inicio) + agendamento.duracao);
   }
-  return horarios;
+  return [...candidatos].sort((a, b) => a - b)
+    .filter(inicio => escolherProfissional(estado, profissionalId, datas, inicio, duracao))
+    .map(horaTexto);
 }
 
 export function diaFechado(estado, data, profissionalId = null) {

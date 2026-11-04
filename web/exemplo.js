@@ -156,7 +156,7 @@ export function gerarExemplo(estado) {
         const cliente = escolherComPeso(sorte, CLIENTES.map((_, indice) => indice), indice => 1 / (indice + 3));
         novo(cliente, servicos, profissionalId, data, horaTexto(inicio), { frequencia: "nenhuma", vezes: 1 }, sorte() < 0.4 ? "cliente" : "painel");
         ocupar(data, profissionalId, inicio, duracao);
-        inicio += duracao - passo;
+        inicio += Math.ceil(duracao / passo) * passo - passo;
       }
     }
   }

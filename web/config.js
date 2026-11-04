@@ -31,6 +31,9 @@ export const config = {
   // Os mesmos de AGENDA em arsystems/settings.py: mudou um, mude o outro.
   agenda: {
     intervaloMinutos: 15,
+    // Duração de um serviço: de 5 em 5 min, até 4 h.
+    passoDuracaoMinutos: 5,
+    duracaoMaximaMinutos: 240,
     diasParaAgendar: 14,
     // Até onde conferir conflitos de uma repetição sem data para terminar.
     horizonteRecorrenciaDias: 180,

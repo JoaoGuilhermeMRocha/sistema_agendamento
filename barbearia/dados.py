@@ -317,14 +317,15 @@ def _campos_do_servico(id, dados):
     nome = str(dados.get("nome") or "").strip()
     preco = ler_valor(dados.get("preco"))
     duracao = dados.get("duracao")
-    passo = settings.AGENDA["intervalo_minutos"]
+    passo = settings.AGENDA["passo_duracao_minutos"]
+    maxima = settings.AGENDA["duracao_maxima_minutos"]
     if not nome:
         raise Recusado("Informe o nome do serviço.")
     if Servico.objects.filter(removido=False, nome__iexact=nome).exclude(pk=id).exists():
         raise Recusado("Já existe um serviço com esse nome.")
     if preco is None or preco < 0:
         raise Recusado("Informe o preço do serviço.")
-    if not isinstance(duracao, int) or isinstance(duracao, bool) or not passo <= duracao <= 480 or duracao % passo:
+    if not isinstance(duracao, int) or isinstance(duracao, bool) or not passo <= duracao <= maxima or duracao % passo:
         raise Recusado("Escolha a duração do serviço.")
     icone = dados.get("icone")
     return {"nome": nome[:60], "preco": preco, "duracao": duracao,

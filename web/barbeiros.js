@@ -374,10 +374,21 @@ function trechosIndisponiveis(coluna, faixa) {
   return trechos;
 }
 
-// Atendimentos que se sobrepõem dividem a largura da coluna, lado a lado.
+// Escala mínima do quadro (pixels por minuto) e altura mínima de um bloco, para um serviço de 5 min
+// continuar legível. A altura mínima também está no .bloco do barbeiros.css: mudou uma, mude a outra.
+const ESCALA_MINIMA = { celular: 0.72, computador: 1 };
+const ALTURA_MINIMA_BLOCO = 22;
+
+// Atendimentos que se sobrepõem dividem a largura da coluna, lado a lado. Um bloco curto ocupa na tela
+// mais que a sua duração (a altura mínima), então quem começa logo depois dele também vai para o lado.
 function distribuirEmFaixas(atendimentos) {
+  const escala = CELULAR.matches ? ESCALA_MINIMA.celular : ESCALA_MINIMA.computador;
+  const minimo = Math.ceil(ALTURA_MINIMA_BLOCO / escala);
   const itens = atendimentos
-    .map(agendamento => ({ agendamento, inicio: minutos(agendamento.inicio), fim: minutos(agendamento.inicio) + agendamento.duracao }))
+    .map(agendamento => {
+      const inicio = minutos(agendamento.inicio);
+      return { agendamento, inicio, fim: inicio + agendamento.duracao, fimNaTela: inicio + Math.max(agendamento.duracao, minimo) };
+    })
     .sort((a, b) => a.inicio - b.inicio || b.fim - a.fim);
   let grupo = [];
   let fimDoGrupo = -1;
@@ -389,10 +400,10 @@ function distribuirEmFaixas(atendimentos) {
   for (const item of itens) {
     if (grupo.length && item.inicio >= fimDoGrupo) fecharGrupo();
     let faixa = 0;
-    while (grupo.some(outro => outro.faixa === faixa && outro.fim > item.inicio)) faixa++;
+    while (grupo.some(outro => outro.faixa === faixa && outro.fimNaTela > item.inicio)) faixa++;
     item.faixa = faixa;
     grupo.push(item);
-    fimDoGrupo = Math.max(fimDoGrupo, item.fim);
+    fimDoGrupo = Math.max(fimDoGrupo, item.fimNaTela);
   }
   if (grupo.length) fecharGrupo();
   return itens;
@@ -409,10 +420,19 @@ function blocoDoAtendimento(item, coluna, faixa) {
   const classes = ["bloco"];
   if (conflito) classes.push("bloco--conflito");
   if (passado) classes.push("bloco--passado");
+  // Dica do mouse no computador: o bloco corta o nome e só mostra os símbolos dos serviços.
+  const dica = [
+    agendamento.cliente.nome,
+    `${agendamento.inicio}–${fim} · ${nomeProfissional(agendamento.profissionalId)}`,
+    servicos.map(servico => servico.nome).join(" + "),
+    repete && descreverRepeticao(agendamento.repeticao, agendamento.data),
+    conflito && `⚠ ${conflito}`
+  ].filter(Boolean).join("\n");
 
   return el("button", {
     type: "button",
     class: classes.join(" "),
+    title: dica,
     "data-profissional": indiceProfissional(agendamento.profissionalId) % 4,
     style: `--inicio: ${item.inicio - faixa.inicio}; --duracao: ${agendamento.duracao}; --faixa: ${item.faixa}; --faixas: ${item.faixas}`,
     "aria-label": `${agendamento.inicio} a ${fim}, ${agendamento.cliente.nome}: ${servicos.map(servico => servico.nome).join(" + ")}, ` +
@@ -523,10 +543,10 @@ function ajustarEscala() {
   const cabecalho = quadro.querySelector(".quadro__canto").offsetHeight;
   const abas = celular ? $(".abas").offsetHeight : 0;
   const sobra = window.innerHeight - topo - cabecalho - abas - 10;
-  const px = Math.min(2.4, Math.max(celular ? 0.72 : 1, sobra / Number(grade.dataset.minutos)));
+  const px = Math.min(2.4, Math.max(celular ? ESCALA_MINIMA.celular : ESCALA_MINIMA.computador, sobra / Number(grade.dataset.minutos)));
   quadro.style.setProperty("--px-min", `${px}px`);
   for (const bloco of quadro.querySelectorAll(".bloco")) {
-    const altura = Number(bloco.style.getPropertyValue("--duracao")) * px;
+    const altura = Math.max(Number(bloco.style.getPropertyValue("--duracao")) * px, ALTURA_MINIMA_BLOCO);
     // Abaixo de duas linhas, nome e símbolos dividem uma linha só; abaixo de três, o horário sai.
     bloco.classList.toggle("bloco--mini", altura < 28);
     bloco.classList.toggle("bloco--curto", altura >= 28 && altura < 40);
@@ -1102,12 +1122,19 @@ ligarFormulario("#formBloqueio", criarBloqueio, "Bloqueio adicionado.");
 const formServico = $("#formServico");
 let servicoEditado = null;
 
+// "45 min", "1h (60 min)", "1h15 (75 min)".
+function rotuloDaDuracao(minutos) {
+  if (minutos < 60) return `${minutos} min`;
+  const resto = minutos % 60;
+  return `${Math.floor(minutos / 60)}h${resto ? String(resto).padStart(2, "0") : ""} (${minutos} min)`;
+}
+
 function preencherDuracoes(atual = 30) {
-  const passo = config.agenda.intervaloMinutos;
-  const opcoes = Array.from({ length: 240 / passo }, (_, indice) => (indice + 1) * passo);
+  const { passoDuracaoMinutos: passo, duracaoMaximaMinutos: maxima } = config.agenda;
+  const opcoes = Array.from({ length: maxima / passo }, (_, indice) => (indice + 1) * passo);
   if (!opcoes.includes(atual)) opcoes.push(atual);
   $("#servicoDuracao").replaceChildren(...opcoes.sort((a, b) => a - b).map(valor =>
-    el("option", { value: valor, selected: valor === atual }, `${valor} min`)));
+    el("option", { value: valor, selected: valor === atual }, rotuloDaDuracao(valor))));
 }
 
 function desenharIconesDeServico() {

@@ -109,7 +109,7 @@ class Bloqueio(models.Model):
 class Servico(models.Model):
     nome = models.CharField(max_length=60)
     preco = models.DecimalField("preço", max_digits=8, decimal_places=2)
-    duracao = models.PositiveSmallIntegerField("duração", help_text="Em minutos, de 15 em 15.")
+    duracao = models.PositiveSmallIntegerField("duração", help_text="Em minutos, de 5 em 5, até 240.")
     icone = models.CharField("símbolo na agenda", max_length=20, choices=ICONES_DE_SERVICO, default="tesoura")
     # Removido some das listas, mas continua no banco para os atendimentos antigos mostrarem o nome.
     removido = models.BooleanField(default=False)
@@ -119,7 +119,7 @@ class Servico(models.Model):
         verbose_name = "serviço"
         constraints = [
             models.CheckConstraint(condition=Q(preco__gte=0), name="servico_preco_positivo"),
-            models.CheckConstraint(condition=Q(duracao__gte=15, duracao__lte=480), name="servico_duracao_valida"),
+            models.CheckConstraint(condition=Q(duracao__gte=5, duracao__lte=240), name="servico_duracao_valida"),
         ]
 
     def __str__(self):

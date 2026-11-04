@@ -599,6 +599,7 @@ button.mini-calendario__dia:active { transform: scale(.92); }
   gap: 1px;
   width: calc((100% - 4px) / var(--faixas) - 2px);
   height: calc(var(--duracao) * var(--px-min) - 2px);
+  min-height: 22px; /* ALTURA_MINIMA_BLOCO no barbeiros.js */
   padding: 3px 4px 3px 5px;
   overflow: hidden;
   border: 0;
