@@ -8,7 +8,7 @@ import {
 import {
   ICONES_DE_SERVICO, aoMudar, apagarDadosDeTeste, cancelarData, carregar, carregarExemplo, criarAgendamento, criarAusencia,
   criarBloqueio, atualizarProduto, atualizarProfissional, atualizarServico, criarProduto, criarServico, encerrarRepeticao, entrar, removerAusencia,
-  removerBloqueio, removerProduto, removerServico, sair, salvarExpediente, tornarRecorrente
+  removerBloqueio, removerProduto, removerServico, sair, salvarExpediente, salvarTelefone, tornarRecorrente
 } from "./dados.js";
 import {
   $, aplicarIcones, avisar, capitalizar, confirmarNoBotao, el, formatarTelefone, icone, linkWhatsApp,
@@ -748,23 +748,60 @@ function abrirDetalhe(id, data) {
       [["Serviços", `${nomes} · ${duracao} min`],
         ["Profissional", profissional],
         agendamento.preco != null && ["Valor", formatarMoeda(agendamento.preco)],
-        ["WhatsApp", formatarTelefone(agendamento.cliente.telefone)],
+        ["WhatsApp", agendamento.cliente.telefone ? formatarTelefone(agendamento.cliente.telefone) : "Não informado"],
         ["Repetição", descreverRepeticao(agendamento.repeticao, agendamento.data)],
         ["Marcado", agendamento.origem === "cliente" ? "Pelo cliente, no site" : "Pelo painel"]
       ].filter(Boolean).map(([rotulo, valor]) => el("div", {}, el("dt", {}, rotulo), el("dd", {}, valor)))),
     el("div", { class: "detalhe__acoes" },
-      el("a", {
-        class: "botao botao--destaque botao--largo",
-        href: linkWhatsApp(agendamento.cliente.telefone, lembrete),
-        target: "_blank",
-        rel: "noopener"
-      }, icone("mensagem"), "Enviar lembrete no WhatsApp"),
+      agendamento.cliente.telefone
+        ? el("a", {
+          class: "botao botao--destaque botao--largo",
+          href: linkWhatsApp(agendamento.cliente.telefone, lembrete),
+          target: "_blank",
+          rel: "noopener"
+        }, icone("mensagem"), "Enviar lembrete no WhatsApp")
+        : painelTelefone(agendamento, data),
       repete ? "" : painelRecorrencia(agendamento),
       cancelar,
       encerrar,
       el("button", { type: "button", class: "botao botao--contorno botao--largo", onclick: fecharDetalhe }, "Fechar")));
 
   $("#detalhe").showModal();
+}
+
+// Atendimento marcado sem número: no lugar do lembrete, um campo para pôr o WhatsApp
+// (vale para todas as datas da série). Depois de salvo, o detalhe abre de novo, já com o lembrete.
+function painelTelefone(agendamento, data) {
+  const area = el("form", { class: "recorrencia", hidden: true, novalidate: true });
+  const abrir = el("button", { type: "button", class: "botao botao--destaque botao--largo", "aria-expanded": "false" },
+    icone("mais"), "Adicionar número");
+  const campo = el("input", {
+    name: "telefone", class: "entrada numeros", type: "tel", inputmode: "tel", placeholder: "(00) 00000-0000",
+    maxlength: 15, autocomplete: "off", "aria-label": "WhatsApp com DDD"
+  });
+  const erro = el("p", { class: "campo__erro", role: "alert" });
+  mascararTelefone(campo);
+
+  area.append(
+    el("label", { class: "campo" }, el("span", { class: "campo__rotulo" }, "WhatsApp com DDD"), campo),
+    erro,
+    el("button", { type: "submit", class: "botao botao--destaque botao--largo" }, "Salvar número"));
+  area.addEventListener("submit", evento => {
+    evento.preventDefault();
+    enviando(area, async () => {
+      if (await resultado(salvarTelefone(agendamento.id, campo.value), "Número salvo.", erro)) abrirDetalhe(agendamento.id, data);
+    });
+  });
+
+  abrir.addEventListener("click", () => {
+    area.hidden = !area.hidden;
+    abrir.setAttribute("aria-expanded", String(!area.hidden));
+    if (!area.hidden) {
+      area.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      campo.focus();
+    }
+  });
+  return [abrir, area];
 }
 
 // "Tornar recorrente": vale para atendimento avulso de qualquer data (passado, hoje ou futuro).

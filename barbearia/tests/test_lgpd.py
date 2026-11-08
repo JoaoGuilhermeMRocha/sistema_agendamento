@@ -78,7 +78,29 @@ class ApagarClienteTests(ApiTestCase):
         self.assertEqual(Agendamento.objects.filter(cliente_telefone="0000000000").count(), 2)
 
 
+    def test_cliente_sem_telefone_e_achado_pelo_nome(self):
+        ana = marcar("", HOJE - timedelta(days=30), nome="Ana Paula")
+        ana_de_novo = marcar("", HOJE - timedelta(days=60), nome="ana  paula")
+        bruno = marcar("", HOJE - timedelta(days=30), nome="Bruno")
+        self.client.force_login(User.objects.create_superuser("joao", password="uma-senha-boa-123"))
+        resposta = self.client.post("/admin/barbearia/agendamento/", {
+            "action": "apagar_dados_do_cliente", "_selected_action": [ana.pk]}, follow=True)
+        self.assertContains(resposta, "1 cliente(s) anonimizado(s), em 2 atendimento(s).")
+        nomes = {item.pk: item.cliente_nome for item in Agendamento.objects.all()}
+        self.assertEqual((nomes[ana.pk], nomes[ana_de_novo.pk], nomes[bruno.pk]),
+                         ("Cliente removido", "Cliente removido", "Bruno"))
+
+
 class PrazoDeGuardaTests(ApiTestCase):
+    def test_sem_telefone_conta_pelo_nome(self):
+        sumido = marcar("", HOJE - timedelta(days=800), nome="Ana")
+        voltou_antigo = marcar("", HOJE - timedelta(days=800), nome="Bruno")
+        voltou_recente = marcar("", HOJE - timedelta(days=20), nome="Bruno")
+        call_command("anonimizar_antigos", stdout=open("/dev/null", "w"))
+        nomes = {item.pk: item.cliente_nome for item in Agendamento.objects.all()}
+        self.assertEqual((nomes[sumido.pk], nomes[voltou_antigo.pk], nomes[voltou_recente.pk]),
+                         ("Cliente removido", "Bruno", "Bruno"))
+
     def test_apaga_quem_sumiu_ha_mais_de_2_anos(self):
         sumido = marcar("43999998888", HOJE - timedelta(days=800))
         fiel_antigo = marcar("43911112222", HOJE - timedelta(days=800), nome="Bruno")

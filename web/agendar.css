@@ -584,6 +584,7 @@ body:not(.concluido) { padding-bottom: calc(92px + env(safe-area-inset-bottom));
 }
 .lembrete__titulo { padding-right: 44px; font-family: var(--fonte-titulo); font-size: 19px; font-weight: 600; }
 .lembrete__texto { margin-bottom: 6px; color: color-mix(in srgb, var(--cor-barra-texto) 72%, transparent); font-size: 15px; }
+.lembrete .botao--contorno { border-color: color-mix(in srgb, var(--cor-barra-texto) 35%, transparent); color: inherit; }
 .lembrete__fechar {
   position: absolute;
   top: 8px;

@@ -3,7 +3,7 @@ import {
   formatarData, formatarMoeda, hoje, inicioDaSemana, paraChave, profissionalPorId, servicosAtivos, somarDias,
   somarServicos, temServicoComum
 } from "./agenda.js";
-import { aoMudar, carregarVitrine, criarAgendamento, horariosDisponiveis } from "./dados.js";
+import { aoMudar, carregarVitrine, criarAgendamento, horariosDisponiveis, linkDaAgenda } from "./dados.js";
 import {
   $, aplicarIcones, capitalizar, el, formatarTelefone, icone, linkWhatsApp, mascararTelefone,
   mostrarErroCampo, preencherMarca, soDigitos
@@ -463,6 +463,18 @@ function mostrarConfirmacao(agendamento) {
     ["Serviços", `${nomes} · ${duracao} min`],
     ["Valor", formatarMoeda(agendamento.preco)]
   ].map(([rotulo, valor]) => el("div", {}, el("dt", {}, rotulo), el("dd", {}, valor))));
+
+  const agenda = linkDaAgenda({
+    titulo: `${nomes} · ${config.nome}`,
+    local: config.endereco,
+    detalhes: [`Com ${profissional}.`,
+      config.whatsapp && `Precisa remarcar? WhatsApp da barbearia: ${formatarTelefone(config.whatsapp.replace(/^55/, ""))}`
+    ].filter(Boolean).join("\n"),
+    data: agendamento.data,
+    inicio: agendamento.inicio,
+    duracao: agendamento.duracao
+  });
+  for (const link of document.querySelectorAll("[data-agenda]")) link.href = agenda;
 
   if (config.whatsapp) {
     const link = linkWhatsApp(config.whatsapp, mensagemDeConfirmacao(agendamento, nomes, profissional));

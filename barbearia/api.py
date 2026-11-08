@@ -9,15 +9,18 @@ um vê o valor só dos próprios atendimentos: nos dos colegas, "preco" vem null
 """
 
 import json
-from datetime import timedelta
+import re
+import uuid
+from datetime import date, datetime, timedelta, timezone as fuso
 from functools import wraps
 
 from django.conf import settings
 from django.contrib.auth import authenticate, login, logout
 from django.core.cache import cache
-from django.http import Http404, JsonResponse
+from django.http import Http404, HttpResponse, JsonResponse
 from django.middleware.csrf import get_token
 from django.utils import timezone
+from django.views.decorators.http import require_safe
 
 from . import agenda, dados
 from .dados import Recusado
@@ -221,6 +224,65 @@ def _agendar(request, corpo):
     return {"agendamento": agendamento_json(agendamento)}
 
 
+def _texto_ics(texto, limite):
+    """Texto de um campo do .ics: sem caracteres de controle e com \\ ; , e quebras escapados."""
+    texto = re.sub(r"[\x00-\x09\x0b-\x1f\x7f]", "", str(texto or ""))[:limite].strip()
+    return texto.replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,").replace("\n", "\\n")
+
+
+def _dobrar_linha(linha):
+    """O .ics pede linhas de até 75 bytes; as seguintes continuam com um espaço na frente."""
+    partes, atual = [], ""
+    for letra in linha:
+        if len((atual + letra).encode()) > (75 if not partes else 74):
+            partes.append(atual)
+            atual = ""
+        atual += letra
+    partes.append(atual)
+    return "\r\n ".join(partes)
+
+
+@require_safe
+def arquivo_de_agenda(request):
+    """"Adicionar à minha agenda": devolve um .ics com o horário e um lembrete 24 h antes.
+
+    Não lê nada do banco: só monta o arquivo com o que a tela de confirmação manda (os textos do
+    config.js e o horário que o cliente acabou de marcar). Um link comum, e não um arquivo gerado no
+    navegador, porque é o que o Safari do iPhone abre direto no Calendário.
+    """
+    parametros = request.GET
+    try:
+        dia = date.fromisoformat(parametros.get("data", ""))
+        hora, minuto = (int(parte) for parte in re.fullmatch(r"(\d{2}):(\d{2})", parametros.get("inicio", "")).groups())
+        duracao = int(parametros.get("duracao", ""))
+        if not (0 <= hora < 24 and 0 <= minuto < 60 and 5 <= duracao <= 600):
+            raise ValueError
+    except (AttributeError, ValueError):
+        return HttpResponse("Horário inválido.", status=400, content_type="text/plain; charset=utf-8")
+
+    inicio = datetime(dia.year, dia.month, dia.day, hora, minuto, tzinfo=timezone.get_default_timezone())
+    utc = lambda momento: momento.astimezone(fuso.utc).strftime("%Y%m%dT%H%M%SZ")
+    titulo = _texto_ics(parametros.get("titulo"), 120) or "Horário marcado"
+    linhas = [
+        "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//AR Systems//Agendamento//PT-BR", "CALSCALE:GREGORIAN",
+        "METHOD:PUBLISH", "BEGIN:VEVENT",
+        f"UID:{uuid.uuid4()}@{request.get_host().split(':')[0]}",
+        f"DTSTAMP:{utc(timezone.now())}",
+        f"DTSTART:{utc(inicio)}",
+        f"DTEND:{utc(inicio + timedelta(minutes=duracao))}",
+        f"SUMMARY:{titulo}",
+        f"LOCATION:{_texto_ics(parametros.get('local'), 200)}",
+        f"DESCRIPTION:{_texto_ics(parametros.get('detalhes'), 500)}",
+        "BEGIN:VALARM", "ACTION:DISPLAY", f"DESCRIPTION:Amanhã: {titulo}", "TRIGGER:-PT24H", "END:VALARM",
+        "END:VEVENT", "END:VCALENDAR",
+    ]
+    resposta = HttpResponse("".join(_dobrar_linha(linha) + "\r\n" for linha in linhas),
+                            content_type="text/calendar; charset=utf-8")
+    resposta["Content-Disposition"] = f'attachment; filename="horario-{dia.isoformat()}.ics"'
+    resposta["Cache-Control"] = "no-store"
+    return resposta
+
+
 vitrine = api(aberta=True, GET=_vitrine)
 horarios = api(aberta=True, GET=_horarios)
 agendar = api(aberta=True, POST=_agendar)
@@ -316,6 +378,11 @@ def _tornar_recorrente(request, corpo, id):
             "datas": [data.isoformat() for data in datas]}
 
 
+def _salvar_telefone(request, corpo, id):
+    agendamento = dados.salvar_telefone(id, corpo.get("telefone"))
+    return {"agendamento": agendamento_json(agendamento, ve_valor(request, agendamento.profissional_id))}
+
+
 def _encerrar_repeticao(request, corpo, id):
     dados.encerrar_repeticao(id, corpo.get("data"))
 
@@ -388,6 +455,7 @@ atendimentos = api(POST=_novo_atendimento)
 cancelar = api(POST=_cancelar_data)
 recorrente = api(POST=_tornar_recorrente)
 encerrar = api(POST=_encerrar_repeticao)
+telefone = api(PUT=_salvar_telefone)
 expediente = api(PUT=_salvar_expediente)
 ausencias = api(POST=_criar_ausencia)
 ausencia = api(DELETE=_remover_ausencia)

@@ -132,7 +132,8 @@ def criar_agendamento(*, nome, telefone, servicos, profissional_id, data, inicio
     telefone = so_digitos(telefone)
     if len(nome) < 2:
         raise Recusado("Informe o nome do cliente.")
-    if not re.fullmatch(r"\d{10,11}", telefone):
+    # No painel o número é opcional (cliente que marcou no balcão ou por telefone fixo).
+    if not re.fullmatch(r"\d{10,11}", telefone) and not (painel and not telefone):
         raise Recusado("Informe um WhatsApp com DDD.")
 
     escolhidos = servicos_escolhidos(servicos)
@@ -224,6 +225,17 @@ def tornar_recorrente(id, repeticao):
         )
         serie.servicos.set(servicos)
     return serie, datas
+
+
+def salvar_telefone(id, telefone):
+    """Põe (ou troca) o WhatsApp de um atendimento, em todas as datas da série."""
+    agendamento = _buscar(Agendamento, id, "Agendamento não encontrado.")
+    telefone = so_digitos(telefone)
+    if not re.fullmatch(r"\d{10,11}", telefone) or telefone == TELEFONE_REMOVIDO:
+        raise Recusado("Informe um WhatsApp com DDD.")
+    agendamento.cliente_telefone = telefone
+    agendamento.save(update_fields=["cliente_telefone"])
+    return agendamento
 
 
 def encerrar_repeticao(id, data):
@@ -466,18 +478,32 @@ CLIENTE_REMOVIDO = "Cliente removido"
 TELEFONE_REMOVIDO = "0000000000"
 
 
-def anonimizar_cliente(telefone):
+def chave_do_cliente(telefone, nome):
+    """Quem é o cliente: o WhatsApp ou, para quem foi marcado sem número, o nome."""
+    return telefone or f"nome:{' '.join(nome.split()).casefold()}"
+
+
+def _do_cliente(chave):
+    if chave.startswith("nome:"):
+        return Agendamento.objects.filter(pk__in=[
+            item.pk for item in Agendamento.objects.filter(cliente_telefone="")
+            if chave_do_cliente("", item.cliente_nome) == chave])
+    return Agendamento.objects.filter(cliente_telefone=chave)
+
+
+def anonimizar_cliente(telefone, nome=""):
     """Direito de apagar (LGPD, art. 18): tira o nome e o WhatsApp do cliente de todos os atendimentos.
+    Sem telefone, o cliente é achado pelo nome entre os atendimentos sem número.
 
     Os atendimentos que já aconteceram continuam nos relatórios, sem identificação. Os que ainda
     vão acontecer são cancelados, porque não dá mais para avisar ninguém.
     """
     telefone = so_digitos(telefone)
-    if not re.fullmatch(r"\d{10,11}", telefone) or telefone == TELEFONE_REMOVIDO:
+    if telefone == TELEFONE_REMOVIDO or not (re.fullmatch(r"\d{10,11}", telefone) or (not telefone and nome.strip())):
         raise Recusado("Informe o WhatsApp do cliente, com DDD.")
     hoje = timezone.localdate()
     with transaction.atomic():
-        do_cliente = Agendamento.objects.filter(cliente_telefone=telefone)
+        do_cliente = _do_cliente(chave_do_cliente(telefone, nome))
         do_cliente.filter(frequencia="nenhuma", data__gte=hoje).delete()
         do_cliente.exclude(frequencia="nenhuma").filter(data__gte=hoje).delete()
         do_cliente.exclude(frequencia="nenhuma").filter(Q(ate__isnull=True) | Q(ate__gt=hoje)).update(ate=hoje)
@@ -497,18 +523,20 @@ def _ultima_data(agendamento):
 def anonimizar_antigos(dias=None):
     """Prazo de guarda (LGPD): tira nome e WhatsApp de quem não tem atendimento há mais de `dias`.
 
-    Conta pelo cliente (telefone), não pelo atendimento: o cliente fiel que voltou mês passado
-    continua com o histórico inteiro.
+    Conta pelo cliente (telefone, ou o nome de quem não tem número), não pelo atendimento: o
+    cliente fiel que voltou mês passado continua com o histórico inteiro.
     """
     dias = settings.LGPD_GUARDA_DIAS if dias is None else dias
     limite = timezone.localdate() - timedelta(days=dias)
-    ultima_por_cliente = {}
+    ultima_por_cliente, ids_por_cliente = {}, {}
     for agendamento in Agendamento.objects.exclude(cliente_telefone=TELEFONE_REMOVIDO):
+        chave = chave_do_cliente(agendamento.cliente_telefone, agendamento.cliente_nome)
         ultima = _ultima_data(agendamento)
-        anterior = ultima_por_cliente.get(agendamento.cliente_telefone, date.min)
-        ultima_por_cliente[agendamento.cliente_telefone] = date.max if ultima is None else max(anterior, ultima)
-    antigos = [telefone for telefone, ultima in ultima_por_cliente.items() if ultima < limite]
-    return Agendamento.objects.filter(cliente_telefone__in=antigos).update(
+        anterior = ultima_por_cliente.get(chave, date.min)
+        ultima_por_cliente[chave] = date.max if ultima is None else max(anterior, ultima)
+        ids_por_cliente.setdefault(chave, []).append(agendamento.pk)
+    antigos = [pk for chave, ultima in ultima_por_cliente.items() if ultima < limite for pk in ids_por_cliente[chave]]
+    return Agendamento.objects.filter(pk__in=antigos).update(
         cliente_nome=CLIENTE_REMOVIDO, cliente_telefone=TELEFONE_REMOVIDO)
 
 

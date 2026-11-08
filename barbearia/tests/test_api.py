@@ -162,6 +162,32 @@ class PublicoTests(ApiTestCase):
         self.assertEqual(self.client.get("/api/publico/agendamentos").status_code, 405)
 
 
+class ArquivoDeAgendaTests(ApiTestCase):
+    def test_ics_com_horario_no_fuso_da_barbearia_e_lembrete_24h_antes(self):
+        resposta = self.client.get("/api/publico/agenda.ics", {
+            "titulo": "Corte, barba; e mais", "local": "Rua Ideal Perez, 631 · Arapoti, PR",
+            "detalhes": "Com Santiago.\nRemarcar: (43) 99836-9534", "data": "2026-11-10", "inicio": "10:00",
+            "duracao": "45"})
+        self.assertEqual(resposta.status_code, 200)
+        self.assertEqual(resposta["Content-Type"], "text/calendar; charset=utf-8")
+        texto = resposta.content.decode()
+        self.assertIn("\r\n", texto)
+        linhas = texto.replace("\r\n ", "").split("\r\n")  # desfaz a dobra das linhas longas
+        # 10h em Brasília = 13h UTC
+        self.assertIn("DTSTART:20261110T130000Z", linhas)
+        self.assertIn("DTEND:20261110T134500Z", linhas)
+        self.assertIn("SUMMARY:Corte\\, barba\\; e mais", linhas)
+        self.assertIn("DESCRIPTION:Com Santiago.\\nRemarcar: (43) 99836-9534", linhas)
+        self.assertIn("TRIGGER:-PT24H", linhas)
+        self.assertTrue(all(len(linha.encode()) <= 75 for linha in texto.split("\r\n")))
+
+    def test_recusa_horario_invalido(self):
+        for parametros in ({"data": "2026-13-01", "inicio": "10:00", "duracao": "30"},
+                           {"data": "2026-11-10", "inicio": "10h", "duracao": "30"},
+                           {"data": "2026-11-10", "inicio": "10:00", "duracao": "0"}):
+            self.assertEqual(self.client.get("/api/publico/agenda.ics", parametros).status_code, 400)
+
+
 class FilaEComplementarTests(ApiTestCase):
     def test_fila_mostra_e_aceita_so_o_primeiro_horario_do_periodo(self):
         Expediente.objects.filter(profissional="santiago", dia_semana=2).update(fila_inicio="13:00", fila_fim="18:00")
@@ -258,6 +284,20 @@ class PainelTests(ApiTestCase):
                           "filaInicio": "", "filaFim": ""})
         self.assertIsNone(estado["expedientes"]["santiago"]["0"])
         self.assertEqual(estado["agendamentos"][0]["servicos"], [CABELO])
+
+    def test_telefone_e_opcional_no_painel_e_pode_ser_adicionado_depois(self):
+        status, resposta = self.novo(telefone="", repeticao={"frequencia": "semanal", "vezes": 3})
+        self.assertEqual((status, resposta["agendamento"]["cliente"]["telefone"]), (200, ""))
+        id = resposta["agendamento"]["id"]
+
+        _, resposta = self.chamar("put", f"/api/painel/agendamentos/{id}/telefone", {"telefone": "9999"})
+        self.assertEqual(resposta["erro"], "Informe um WhatsApp com DDD.")
+        _, resposta = self.chamar("put", f"/api/painel/agendamentos/{id}/telefone", {"telefone": "(43) 98888-7777"})
+        self.assertEqual(resposta["agendamento"]["cliente"]["telefone"], "43988887777")
+        self.assertEqual(Agendamento.objects.get(pk=id).cliente_telefone, "43988887777")
+        # Número pela metade continua recusado.
+        _, resposta = self.novo(nome="Bruno", telefone="4399", inicio="11:00")
+        self.assertEqual(resposta["erro"], "Informe um WhatsApp com DDD.")
 
     def test_serie_semanal_e_cancelar_um_dia(self):
         _, resposta = self.novo(repeticao={"frequencia": "semanal", "vezes": 3})

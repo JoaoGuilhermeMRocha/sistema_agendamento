@@ -143,6 +143,9 @@
         <a id="falarBarbearia" class="botao botao--contorno botao--largo" target="_blank" rel="noopener" hidden>
           <span data-icone="mensagem"></span>Falar com a barbearia
         </a>
+        <a id="salvarNaAgenda" class="botao botao--contorno botao--largo" data-agenda>
+          <span data-icone="calendario"></span>Adicionar à minha agenda
+        </a>
         <a class="botao botao--contorno botao--largo" href="/loja"><span data-icone="sacola"></span>Ver produtos da loja</a>
       </div>
     </section>
@@ -151,9 +154,13 @@
     <aside id="lembrete" class="lembrete" role="dialog" aria-labelledby="t-lembrete" aria-describedby="lembreteTexto" hidden>
       <button id="fecharLembrete" class="lembrete__fechar" type="button" aria-label="Fechar"><span data-icone="fechar"></span></button>
       <p id="t-lembrete" class="lembrete__titulo">Avise a barbearia</p>
-      <p id="lembreteTexto" class="lembrete__texto">Mande a confirmação no WhatsApp, já com o seu horário escrito.</p>
+      <p id="lembreteTexto" class="lembrete__texto">Mande a confirmação no WhatsApp, já com o seu horário escrito, e salve na agenda do celular para ser lembrado um dia antes.</p>
       <a id="lembreteLink" class="botao botao--destaque botao--largo" target="_blank" rel="noopener">
         <span data-icone="mensagem"></span>Confirmar no WhatsApp
+      </a>
+      <!-- Link comum (sem download nem nova aba): o Safari do iPhone abre o .ics direto no Calendário -->
+      <a class="botao botao--contorno botao--largo" data-agenda>
+        <span data-icone="calendario"></span>Adicionar à minha agenda
       </a>
       <span class="lembrete__tempo" aria-hidden="true"></span>
     </aside>

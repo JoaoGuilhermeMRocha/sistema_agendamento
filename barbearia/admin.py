@@ -1,6 +1,6 @@
 from django.contrib import admin, messages
 
-from .dados import TELEFONE_REMOVIDO, anonimizar_cliente
+from .dados import TELEFONE_REMOVIDO, anonimizar_cliente, chave_do_cliente
 from .models import Agendamento, Ausencia, Bloqueio, Excecao, Expediente, Produto, Profissional, Servico
 
 admin.site.site_header = "AR Systems"
@@ -51,9 +51,11 @@ class AgendamentoAdmin(admin.ModelAdmin):
     def apagar_dados_do_cliente(self, request, queryset):
         """Para quando o cliente pede para apagar os dados. Ache um atendimento dele pela busca
         (nome ou telefone), marque e rode esta ação. Os futuros são cancelados."""
-        telefones = set(queryset.exclude(cliente_telefone=TELEFONE_REMOVIDO).values_list("cliente_telefone", flat=True))
-        total = sum(anonimizar_cliente(telefone) for telefone in telefones)
-        self.message_user(request, f"{len(telefones)} cliente(s) anonimizado(s), em {total} atendimento(s).", messages.SUCCESS)
+        # Sem WhatsApp (marcado pelo painel sem número), o cliente é achado pelo nome.
+        clientes = {chave_do_cliente(telefone, nome): (telefone, nome) for telefone, nome in
+                    queryset.exclude(cliente_telefone=TELEFONE_REMOVIDO).values_list("cliente_telefone", "cliente_nome")}
+        total = sum(anonimizar_cliente(telefone, nome) for telefone, nome in clientes.values())
+        self.message_user(request, f"{len(clientes)} cliente(s) anonimizado(s), em {total} atendimento(s).", messages.SUCCESS)
 
 
 @admin.register(Ausencia)

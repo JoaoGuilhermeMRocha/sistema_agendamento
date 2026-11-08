@@ -6,6 +6,7 @@ urlpatterns = [
     path("publico/vitrine", api.vitrine),
     path("publico/horarios", api.horarios),
     path("publico/agendamentos", api.agendar),
+    path("publico/agenda.ics", api.arquivo_de_agenda),
 
     path("painel/entrar", api.entrar),
     path("painel/sair", api.sair),
@@ -15,6 +16,7 @@ urlpatterns = [
     path("painel/agendamentos/<int:id>/cancelar", api.cancelar),
     path("painel/agendamentos/<int:id>/recorrente", api.recorrente),
     path("painel/agendamentos/<int:id>/encerrar", api.encerrar),
+    path("painel/agendamentos/<int:id>/telefone", api.telefone),
     path("painel/expedientes/<slug:profissional>", api.expediente),
     path("painel/ausencias", api.ausencias),
     path("painel/ausencias/<int:id>", api.ausencia),

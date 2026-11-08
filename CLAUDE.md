@@ -89,7 +89,8 @@ Não espalhe dado de cliente pelo código: o que for específico de uma barbeari
 - O cliente marca **um atendimento por vez**. Repetição só pelo painel (decisão da barbearia): a rota pública do servidor ignora a repetição.
 - O agendamento é **confirmado na hora**: não há etapa de aprovar ou recusar.
 - No celular, uma barra fixa embaixo mostra o valor e o próximo passo. No computador, o resumo fica num cartão lateral fixo.
-- A tela de confirmação tem "Marcar outro horário" e "Falar com a barbearia" (WhatsApp). Junto, sobe um popup (`#lembrete`) com "Confirmar no WhatsApp", que abre a conversa com a barbearia já com a mensagem de confirmação (serviço, dia, profissional e nome, `mensagemDeConfirmacao`). Some sozinho em 30 s (`DURACAO_DO_LEMBRETE`, com a barra de tempo embaixo), no X, no Esc ou ao tocar no link.
+- A tela de confirmação tem "Marcar outro horário", "Falar com a barbearia" (WhatsApp) e "Adicionar à minha agenda". Junto, sobe um popup (`#lembrete`) com "Confirmar no WhatsApp", que abre a conversa com a barbearia já com a mensagem de confirmação (serviço, dia, profissional e nome, `mensagemDeConfirmacao`), e também "Adicionar à minha agenda". Some sozinho em 30 s (`DURACAO_DO_LEMBRETE`, com a barra de tempo embaixo), no X, no Esc ou ao tocar no link do WhatsApp.
+- **Adicionar à minha agenda** (`[data-agenda]`, link de `linkDaAgenda` em `dados.js`): aponta para `/api/publico/agenda.ics`, que devolve um evento com **lembrete 24 h antes** (`VALARM`, `TRIGGER:-PT24H`). É link comum, sem `download` nem nova aba: assim o Safari do iPhone abre direto no Calendário. A rota não lê o banco: só monta o arquivo com o que a página manda (título e local do `config.js`, dia, hora e duração) e converte a hora do fuso da barbearia para UTC.
 
 **Loja (`/loja`)**
 - Mostra os produtos cadastrados no painel, com foto, descrição e preço. Não vende online.
@@ -102,8 +103,8 @@ Não espalhe dado de cliente pelo código: o que for específico de uma barbeari
   - Atendimento = bloco com o primeiro nome do cliente e símbolos: repetição, o ícone de cada serviço e alerta de conflito. Atendimentos no mesmo horário dividem a coluna lado a lado.
   - Trechos sem atendimento (fora do expediente, pausa, folga, ausência, bloqueio) ficam hachurados, com o motivo quando é o mesmo para todos do filtro. Dia em que ninguém trabalha vira coluna estreita. Linha vermelha marca a hora atual.
   - Tocar num horário livre abre a janela de novo atendimento (`#janelaNovo`, uma `.folha`) com dia, hora e profissional da coluna (ou do filtro).
-  - Tocar num atendimento abre uma folha com os detalhes, o lembrete pronto no WhatsApp, "Tornar recorrente" (só em avulsos, de qualquer data), "cancelar só este dia" e "encerrar repetição a partir deste dia".
-- **Novo atendimento** (janela aberta pelo horário livre do quadro, não é mais aba nem botão): agendamento manual, com repetição opcional (semanal, quinzenal, a cada 3 semanas ou mensal, com 2 a 52 atendimentos ou **sem data para terminar**). O seletor mostra só horários livres. Complementares ficam travados até um serviço comum ser marcado (`travarComplementaresNovo`). Blocos baixos ganham `bloco--curto` (sem horário) ou `bloco--mini` (uma linha só). Na visão do dia o bloco mostra o nome inteiro do cliente.
+  - Tocar num atendimento abre uma folha com os detalhes, o lembrete pronto no WhatsApp (sem número cadastrado, no lugar dele vem "Adicionar número", que grava o WhatsApp em todas as datas da série por `PUT painel/agendamentos/<id>/telefone`), "Tornar recorrente" (só em avulsos, de qualquer data), "cancelar só este dia" e "encerrar repetição a partir deste dia".
+- **Novo atendimento** (janela aberta pelo horário livre do quadro, não é mais aba nem botão): agendamento manual, com **WhatsApp opcional** (só no painel; pelo site é obrigatório), com repetição opcional (semanal, quinzenal, a cada 3 semanas ou mensal, com 2 a 52 atendimentos ou **sem data para terminar**). O seletor mostra só horários livres. Complementares ficam travados até um serviço comum ser marcado (`travarComplementaresNovo`). Blocos baixos ganham `bloco--curto` (sem horário) ou `bloco--mini` (uma linha só). Na visão do dia o bloco mostra o nome inteiro do cliente.
 - **Horários**: expediente individual de cada profissional por dia da semana (início, fim, pausa e horário sequencial), **perfil no agendamento** (nome, descrição e foto; a foto é cortada quadrada em 400px antes de enviar, com `reduzirFoto(arquivo, 400, { quadrada: true })`), folgas e ausências por profissional, feriados e bloqueios da barbearia toda. Incluir ou tirar barbeiro e criar o login dele é pelo admin. Os quatro cartões recolhem (`<details class="cartao cartao--recolhivel">`, seta à direita do título) e começam fechados.
 - **Serviços**: cadastrar, editar e remover (nome, preço, complementar, duração de 5 em 5 min até 240, com o seletor mostrando em horas a partir de 60, como "1h15 (75 min)", e símbolo na agenda, de `ICONES_DE_SERVICO` em `dados.js`). Cada símbolo tem uma cor própria (tokens `--cor-icone-*` no `tema.css`, aplicados pela classe `icone-servico--<nome>`), para reconhecer o serviço só pela cor. Os serviços ficam no banco; os iniciais vêm do `dados_iniciais.json`. Remover só marca `removido: true`, para os atendimentos antigos continuarem com o nome, e o último serviço não pode ser removido. Mudar preço ou duração não altera quem já marcou, porque o agendamento guarda `preco` e `duracao`.
 - **Produtos**: cadastrar, **editar** (reaproveita o formulário) e remover. A foto é reduzida para 900px em JPEG antes de salvar.
@@ -118,7 +119,7 @@ Não espalhe dado de cliente pelo código: o que for específico de uma barbeari
 **LGPD**
 - Base legal do agendamento: execução do serviço pedido pelo cliente (art. 7º, V). Por isso **não há caixinha de consentimento** (decisão do João): o `/agendar` mostra um aviso com link para a `/privacidade` logo acima da confirmação.
 - A barbearia é a controladora; a AR Systems (o João) é a operadora.
-- Pedido de apagar: no admin, em Agendamentos, busque o cliente, marque um atendimento dele e rode a ação "LGPD: apagar nome e WhatsApp destes clientes" (`anonimizar_cliente`). Troca nome e telefone por "Cliente removido" e `0000000000` em todos os atendimentos dele, apaga os futuros e encerra as séries. Os números dos relatórios ficam.
+- Pedido de apagar: no admin, em Agendamentos, busque o cliente, marque um atendimento dele e rode a ação "LGPD: apagar nome e WhatsApp destes clientes" (`anonimizar_cliente`). Cliente marcado sem WhatsApp é achado pelo nome (`chave_do_cliente`), o mesmo critério do prazo de guarda e da contagem de clientes nos relatórios. Troca nome e telefone por "Cliente removido" e `0000000000` em todos os atendimentos dele, apaga os futuros e encerra as séries. Os números dos relatórios ficam.
 - Prazo de guarda: **2 anos sem atendimento** (decisão do João), pelo comando `anonimizar_antigos`.
 
 ## Regras de negócio (em `agenda.js` e `barbearia/agenda.py`)
@@ -155,7 +156,7 @@ As tabelas estão em `barbearia/models.py`. O front recebe o estado neste format
 }
 ```
 
-Datas são strings `AAAA-MM-DD` e horas são `HH:MM`. Telefones são guardados só com dígitos (10 ou 11, sem DDI).
+Datas são strings `AAAA-MM-DD` e horas são `HH:MM`. Telefones são guardados só com dígitos (10 ou 11, sem DDI), ou vazios no atendimento marcado pelo painel sem número.
 
 ## Convenções de código
 

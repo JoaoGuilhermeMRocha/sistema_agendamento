@@ -173,7 +173,8 @@ class Agendamento(models.Model):
         PAINEL = "painel", "Painel"
 
     cliente_nome = models.CharField("cliente", max_length=80)
-    cliente_telefone = models.CharField("WhatsApp", max_length=11, help_text="Só dígitos, com DDD.")
+    # Vazio = marcado pelo painel sem número (pelo site o WhatsApp é obrigatório).
+    cliente_telefone = models.CharField("WhatsApp", max_length=11, blank=True, help_text="Só dígitos, com DDD.")
     servicos = models.ManyToManyField(Servico, related_name="agendamentos", verbose_name="serviços")
     profissional = models.ForeignKey(Profissional, on_delete=models.PROTECT, related_name="agendamentos")
     data = models.DateField()
@@ -193,7 +194,7 @@ class Agendamento(models.Model):
         ordering = ["data", "inicio"]
         indexes = [models.Index(fields=["profissional", "data"])]
         constraints = [
-            models.CheckConstraint(condition=Q(cliente_telefone__regex=r"^\d{10,11}$"), name="agendamento_telefone_valido"),
+            models.CheckConstraint(condition=Q(cliente_telefone__regex=r"^(\d{10,11})?$"), name="agendamento_telefone_valido"),
             models.CheckConstraint(
                 condition=Q(frequencia="nenhuma", vezes=1) | (
                     ~Q(frequencia="nenhuma") & (Q(vezes__isnull=True) | Q(vezes__gte=2, vezes__lte=52))),

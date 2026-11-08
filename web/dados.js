@@ -81,6 +81,12 @@ export function criarAgendamento({ nome, telefone, servicos, profissionalId, dat
     : pedir("POST", "publico/agendamentos", corpo);
 }
 
+// "Adicionar à minha agenda": o servidor devolve um .ics com o horário e um lembrete 24 h antes.
+export function linkDaAgenda({ titulo, local, detalhes, data, inicio, duracao }) {
+  const busca = new URLSearchParams({ titulo, local: local ?? "", detalhes: detalhes ?? "", data, inicio, duracao });
+  return `/api/publico/agenda.ics?${busca}`;
+}
+
 /* Painel: login */
 
 export const quemSou = () => pedir("GET", "painel/eu");
@@ -95,6 +101,7 @@ export const carregar = async () => aplicarProfissionais(await pedir("GET", "pai
 export const cancelarData = (id, data) => pedir("POST", `painel/agendamentos/${id}/cancelar`, { data });
 export const tornarRecorrente = (id, repeticao) => pedir("POST", `painel/agendamentos/${id}/recorrente`, { repeticao });
 export const encerrarRepeticao = (id, data) => pedir("POST", `painel/agendamentos/${id}/encerrar`, { data });
+export const salvarTelefone = (id, telefone) => pedir("PUT", `painel/agendamentos/${id}/telefone`, { telefone });
 
 /* Painel: expediente, ausências e bloqueios. Com simular, o servidor só devolve os conflitos que a mudança causaria. */
 

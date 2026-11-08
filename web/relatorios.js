@@ -122,6 +122,8 @@ function linhasDoPeriodo(estado, de, ate, filtros) {
         fim: horaTexto(fim),
         cliente: agendamento.cliente.nome,
         telefone: agendamento.cliente.telefone,
+        // Quem foi marcado pelo painel sem número é reconhecido pelo nome.
+        chaveCliente: agendamento.cliente.telefone || `nome:${agendamento.cliente.nome.trim().toLowerCase()}`,
         profissionalId: agendamento.profissionalId,
         servicos,
         duracao: agendamento.duracao,
@@ -191,7 +193,7 @@ function indicadores(estado, linhas, de, ate, filtros) {
     previsto,
     atendimentos: linhas.length,
     ticket: linhas.length ? faturamento / linhas.length : 0,
-    clientes: new Set(linhas.map(linha => linha.telefone)).size,
+    clientes: new Set(linhas.map(linha => linha.chaveCliente)).size,
     ocupacao: disponivel ? ocupados / disponivel : null
   };
 }
@@ -239,7 +241,7 @@ function grupoDaLinha(linha, grupo) {
     case "profissional": return linha.profissionalId;
     case "origem": return linha.origem;
     case "tipo": return linha.recorrente ? "recorrente" : "avulso";
-    case "cliente": return linha.telefone;
+    case "cliente": return linha.chaveCliente;
     default: return null;
   }
 }
@@ -310,7 +312,7 @@ function agrupar(estado, linhas, grupo, de, ate, filtros) {
     // Cliente: o nome mais recente do período, com o WhatsApp para não confundir homônimos.
     somar(grupoDaLinha(linha, grupo), () => ({
       rotulo: linha.cliente,
-      rotuloLongo: `${linha.cliente} · ${formatarTelefone(linha.telefone)}`
+      rotuloLongo: linha.telefone ? `${linha.cliente} · ${formatarTelefone(linha.telefone)}` : linha.cliente
     }), valor, tempo);
   }
 
