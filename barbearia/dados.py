@@ -163,13 +163,20 @@ def criar_agendamento(*, nome, telefone, servicos, profissional_id, data, inicio
             estado, profissional_id or None, datas, agenda.minutos(inicio), duracao, fila=not painel)
         if not escolhido:
             raise Recusado("Esse horário não está mais livre. Escolha outro.")
+        puladas = agenda.datas_indisponiveis(estado, escolhido, datas[1:], agenda.minutos(inicio), duracao)
         agendamento = Agendamento.objects.create(
             cliente_nome=nome[:80], cliente_telefone=telefone, profissional_id=escolhido, data=data, inicio=inicio,
             duracao=duracao, preco=sum(servico.preco for servico in escolhidos),
             frequencia=frequencia, vezes=vezes, origem="painel" if painel else "cliente",
         )
         agendamento.servicos.set(escolhidos)
-    return agendamento, datas
+        _pular(agendamento, puladas)
+    return agendamento, datas, puladas
+
+
+def _pular(agendamento, puladas):
+    """Datas da série em que o profissional não pode atender viram exceção (dia cancelado)."""
+    Excecao.objects.bulk_create([Excecao(agendamento=agendamento, data=data) for data, _ in puladas])
 
 
 def cancelar_data(id, data):
@@ -203,20 +210,17 @@ def tornar_recorrente(id, repeticao):
         datas = agenda.datas_da_serie(primeira, frequencia, vezes)
         duracao = original.duracao if no_proprio else sum(servico.duracao for servico in servicos)
         inicio = agenda.minutos(original.inicio)
-        ocupadas = [
-            data for data in (datas[1:] if no_proprio else datas)
-            if not agenda.profissional_livre(estado, original.profissional_id, data, inicio, duracao)
-        ]
-        if ocupadas:
-            lista = ", ".join(f"{data:%d/%m}" for data in ocupadas[:3])
-            resto = f" e mais {len(ocupadas) - 3}" if len(ocupadas) > 3 else ""
-            raise Recusado(f"{original.profissional.nome} não está livre em {lista}{resto}. "
-                           "Tente outra frequência ou menos atendimentos.")
+        # As datas em que ele não pode atender são puladas; só recusa se não sobrar nenhuma.
+        puladas = agenda.datas_indisponiveis(
+            estado, original.profissional_id, datas[1:] if no_proprio else datas, inicio, duracao)
+        if not no_proprio and len(puladas) == len(datas):
+            raise Recusado(f"{original.profissional.nome} não está livre em nenhuma data dessa repetição.")
 
         if no_proprio:
             original.frequencia, original.vezes = frequencia, vezes
             original.save(update_fields=["frequencia", "vezes"])
-            return original, datas
+            _pular(original, puladas)
+            return original, datas, puladas
         serie = Agendamento.objects.create(
             cliente_nome=original.cliente_nome, cliente_telefone=original.cliente_telefone,
             profissional_id=original.profissional_id, data=primeira, inicio=original.inicio,
@@ -224,7 +228,101 @@ def tornar_recorrente(id, repeticao):
             frequencia=frequencia, vezes=vezes, origem="painel",
         )
         serie.servicos.set(servicos)
-    return serie, datas
+        _pular(serie, puladas)
+    return serie, datas, puladas
+
+
+def _copiar(original, **campos):
+    """Novo agendamento com o cliente, os serviços, o preço, a duração e a origem do original."""
+    copia = Agendamento.objects.create(
+        cliente_nome=original.cliente_nome, cliente_telefone=original.cliente_telefone, duracao=original.duracao,
+        preco=original.preco, origem=original.origem, **campos)
+    copia.servicos.set(original.servicos.all())
+    return copia
+
+
+def _mover_serie(original, data, nova_data, inicio, profissional_id):
+    """Leva a ocorrência de `data` e as seguintes para o novo dia e horário. As anteriores ficam
+    como estão (o que passou não muda nos relatórios). Os dias cancelados continuam cancelados,
+    na posição equivalente da série nova. Devolve o agendamento novo e as exceções dele."""
+    frequencia = original.frequencia
+    atual = agenda.indice_da_ocorrencia(original.data, frequencia, data)
+    restantes = None if original.vezes is None else original.vezes - atual
+    if original.ate:  # repetição encerrada: conta quantas ocorrências faltavam até o fim
+        quantas = 0
+        while ((restantes is None or quantas < restantes)
+               and agenda.data_da_ocorrencia(original.data, frequencia, atual + quantas) < original.ate):
+            quantas += 1
+        restantes = quantas
+    excecoes = sorted({
+        agenda.data_da_ocorrencia(
+            nova_data, frequencia, agenda.indice_da_ocorrencia(original.data, frequencia, excecao) - atual)
+        for excecao in original.excecoes.filter(data__gt=data).values_list("data", flat=True)
+        if restantes is None or agenda.indice_da_ocorrencia(original.data, frequencia, excecao) - atual < restantes
+    })
+    if restantes == 1:  # sobrou só esta: vira atendimento avulso
+        frequencia, vezes, excecoes = "nenhuma", 1, []
+    else:
+        vezes = restantes
+
+    campos = {"data": nova_data, "inicio": inicio, "profissional_id": profissional_id,
+              "frequencia": frequencia, "vezes": vezes, "ate": None}
+    if atual == 0:
+        original.excecoes.all().delete()
+        for campo, valor in campos.items():
+            setattr(original, campo, valor)
+        original.save()
+        alvo = original
+    else:
+        original.ate = data
+        original.save(update_fields=["ate"])
+        alvo = _copiar(original, **campos)
+    Excecao.objects.bulk_create([Excecao(agendamento=alvo, data=excecao) for excecao in excecoes])
+    return alvo, excecoes
+
+
+def reagendar(id, *, data, nova_data, inicio, profissional_id, escopo="dia"):
+    """Muda dia, horário e profissional de um atendimento. Numa série, escopo "dia" muda só a
+    ocorrência de `data` (ela vira um atendimento avulso) e "serie" muda essa e as seguintes."""
+    original = _buscar(Agendamento, id, "Agendamento não encontrado.")
+    data = ler_data(data, "Data inválida.")
+    nova_data = ler_data(nova_data, "Escolha o novo dia e horário.")
+    inicio = ler_hora(inicio, "Escolha o novo dia e horário.")
+    profissional = Profissional.objects.filter(id=profissional_id or "", ativo=True).first()
+    if not profissional:
+        raise Recusado("Profissional inválido.")
+    if escopo not in ("dia", "serie"):
+        raise Recusado("Escolha se muda só este dia ou a série.")
+    if not agenda.ocorre_em(_atendimento(original), data):
+        raise Recusado("Este atendimento não acontece nesse dia. Recarregue a página.")
+    minuto = agenda.minutos(inicio)
+
+    with transaction.atomic():
+        _travar_profissionais(sorted({original.profissional_id, profissional.id}))
+        excecoes = []
+        if original.frequencia == "nenhuma":
+            original.data, original.inicio, original.profissional = nova_data, inicio, profissional
+            original.save(update_fields=["data", "inicio", "profissional"])
+            alvo = original
+        elif escopo == "dia":
+            Excecao.objects.get_or_create(agendamento=original, data=data)
+            alvo = _copiar(original, data=nova_data, inicio=inicio, profissional=profissional,
+                           frequencia="nenhuma", vezes=1)
+        else:
+            alvo, excecoes = _mover_serie(original, data, nova_data, inicio, profissional.id)
+
+        # Confere com a mudança já aplicada; se não der, a transação desfaz tudo.
+        estado = agenda.carregar_estado()
+        if not agenda.profissional_livre(estado, profissional.id, nova_data, minuto, alvo.duracao, ignorar_id=alvo.id):
+            motivo = agenda.motivo_indisponivel(estado, profissional.id, nova_data, minuto, alvo.duracao)
+            raise Recusado(f"{profissional.nome} não está livre em {nova_data:%d/%m} às {inicio:%H:%M}"
+                           f"{f' ({motivo.lower()})' if motivo else ''}. Escolha outro horário.")
+        datas = agenda.datas_da_serie(nova_data, alvo.frequencia, alvo.vezes)
+        puladas = agenda.datas_indisponiveis(
+            estado, profissional.id, [item for item in datas[1:] if item not in excecoes], minuto, alvo.duracao,
+            ignorar_id=alvo.id)
+        _pular(alvo, puladas)
+    return alvo, datas, puladas
 
 
 def salvar_telefone(id, telefone):

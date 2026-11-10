@@ -214,7 +214,7 @@ def _agendar(request, corpo):
     feitos = cache.get(chave, 0)
     if feitos >= AGENDAMENTOS_POR_IP:
         raise Recusado("Muitos agendamentos seguidos deste aparelho. Espere um pouco ou fale com a barbearia pelo WhatsApp.")
-    agendamento, _ = dados.criar_agendamento(
+    agendamento, _, _ = dados.criar_agendamento(
         nome=corpo.get("nome"), telefone=corpo.get("telefone"), servicos=corpo.get("servicos"),
         profissional_id=corpo.get("profissionalId"), data=corpo.get("data"), inicio=corpo.get("inicio"),
         origem="cliente",
@@ -358,14 +358,20 @@ def _estado(request, corpo):
     }
 
 
+def _serie_json(request, agendamento, datas, puladas):
+    """Resposta de quem cria ou muda uma série: as datas e as que foram puladas, com o motivo."""
+    return {"agendamento": agendamento_json(agendamento, ve_valor(request, agendamento.profissional_id)),
+            "datas": [data.isoformat() for data in datas],
+            "puladas": [{"data": data.isoformat(), "motivo": motivo} for data, motivo in puladas]}
+
+
 def _novo_atendimento(request, corpo):
-    agendamento, datas = dados.criar_agendamento(
+    resposta = dados.criar_agendamento(
         nome=corpo.get("nome"), telefone=corpo.get("telefone"), servicos=corpo.get("servicos"),
         profissional_id=corpo.get("profissionalId"), data=corpo.get("data"), inicio=corpo.get("inicio"),
         repeticao=corpo.get("repeticao"), origem="painel",
     )
-    return {"agendamento": agendamento_json(agendamento, ve_valor(request, agendamento.profissional_id)),
-            "datas": [data.isoformat() for data in datas]}
+    return _serie_json(request, *resposta)
 
 
 def _cancelar_data(request, corpo, id):
@@ -373,9 +379,13 @@ def _cancelar_data(request, corpo, id):
 
 
 def _tornar_recorrente(request, corpo, id):
-    agendamento, datas = dados.tornar_recorrente(id, corpo.get("repeticao"))
-    return {"agendamento": agendamento_json(agendamento, ve_valor(request, agendamento.profissional_id)),
-            "datas": [data.isoformat() for data in datas]}
+    return _serie_json(request, *dados.tornar_recorrente(id, corpo.get("repeticao")))
+
+
+def _reagendar(request, corpo, id):
+    return _serie_json(request, *dados.reagendar(
+        id, data=corpo.get("data"), nova_data=corpo.get("novaData"), inicio=corpo.get("inicio"),
+        profissional_id=corpo.get("profissionalId"), escopo=corpo.get("escopo", "dia")))
 
 
 def _salvar_telefone(request, corpo, id):
@@ -454,6 +464,7 @@ estado = api(GET=_estado)
 atendimentos = api(POST=_novo_atendimento)
 cancelar = api(POST=_cancelar_data)
 recorrente = api(POST=_tornar_recorrente)
+reagendar = api(POST=_reagendar)
 encerrar = api(POST=_encerrar_repeticao)
 telefone = api(PUT=_salvar_telefone)
 expediente = api(PUT=_salvar_expediente)

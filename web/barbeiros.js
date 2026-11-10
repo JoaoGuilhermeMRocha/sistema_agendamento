@@ -1,6 +1,7 @@
 import { config } from "./config.js";
 import {
-  FREQUENCIAS, atendimentosDoDia, conflitoDoAtendimento, daChave, datasDaSerie, descreverMensal,
+  FREQUENCIAS, atendimentosDoDia, conflitoDoAtendimento, daChave, dataDaOcorrencia, datasDaSerie, datasIndisponiveis,
+  descreverMensal, indiceDaOcorrencia,
   descreverRepeticao, diaFechado, expedienteDoDia, formatarData, formatarMoeda, hoje, horaTexto, horariosLivres,
   inicioDaRecorrencia, inicioDaSemana, minutos, motivoIndisponivel, paraChave, profissionalPorId, servicoPorId,
   servicosAtivos, somarDias, somarServicos, temServicoComum
@@ -8,7 +9,7 @@ import {
 import {
   ICONES_DE_SERVICO, aoMudar, apagarDadosDeTeste, cancelarData, carregar, carregarExemplo, criarAgendamento, criarAusencia,
   criarBloqueio, atualizarProduto, atualizarProfissional, atualizarServico, criarProduto, criarServico, encerrarRepeticao, entrar, removerAusencia,
-  removerBloqueio, removerProduto, removerServico, sair, salvarExpediente, salvarTelefone, tornarRecorrente
+  reagendar, removerBloqueio, removerProduto, removerServico, sair, salvarExpediente, salvarTelefone, tornarRecorrente
 } from "./dados.js";
 import {
   $, aplicarIcones, avisar, capitalizar, confirmarNoBotao, el, formatarTelefone, icone, linkWhatsApp,
@@ -95,6 +96,14 @@ async function resultado(pedido, mensagem, alvoErro) {
   avisar(typeof mensagem === "function" ? mensagem(retorno) : mensagem);
   return true;
 }
+
+// "Ficou de fora: 28/11 (profissional ausente)": as datas da série que foram puladas.
+function textoPuladas(puladas = []) {
+  if (!puladas.length) return "";
+  const lista = puladas.slice(0, 3).map(({ data, motivo }) => `${formatarData(data)} (${motivo.toLowerCase()})`).join(", ");
+  return ` Ficou de fora: ${lista}${puladas.length > 3 ? ` e mais ${puladas.length - 3}` : ""}.`;
+}
+const comPuladas = texto => retorno => texto + textoPuladas(retorno.puladas);
 
 // Trava o botão de envio do formulário enquanto o servidor responde, contra toque duplo.
 async function enviando(form, tarefa) {
@@ -761,6 +770,7 @@ function abrirDetalhe(id, data) {
           rel: "noopener"
         }, icone("mensagem"), "Enviar lembrete no WhatsApp")
         : painelTelefone(agendamento, data),
+      painelReagendar(agendamento, data),
       repete ? "" : painelRecorrencia(agendamento),
       cancelar,
       encerrar,
@@ -804,6 +814,113 @@ function painelTelefone(agendamento, data) {
   return [abrir, area];
 }
 
+// Quantas ocorrências a série ainda tem a partir de "data" (essa inclusa), contando vezes e encerramento.
+// Mesma conta do servidor (_mover_serie); serve só para a prévia.
+function restoDaSerie(agendamento, data) {
+  const { frequencia, vezes } = agendamento.repeticao;
+  const atual = indiceDaOcorrencia(agendamento.data, frequencia, data);
+  let restantes = vezes == null ? null : vezes - atual;
+  if (agendamento.ate) {
+    let quantas = 0;
+    while ((restantes == null || quantas < restantes) &&
+      dataDaOcorrencia(agendamento.data, frequencia, atual + quantas) < agendamento.ate) quantas++;
+    restantes = quantas;
+  }
+  return restantes;
+}
+
+// O estado sem a ocorrência que vai mudar, para os horários livres não esbarrarem nela mesma.
+function estadoSemOcorrencia(agendamento, data, escopo) {
+  const outros = estado.agendamentos.filter(item => item.id !== agendamento.id);
+  const repete = agendamento.repeticao.frequencia !== "nenhuma";
+  if (!repete || (escopo === "serie" && data === agendamento.data)) return { ...estado, agendamentos: outros };
+  const resto = escopo === "serie"
+    ? { ...agendamento, ate: data }
+    : { ...agendamento, excecoes: [...agendamento.excecoes, data] };
+  return { ...estado, agendamentos: [...outros, resto] };
+}
+
+// "Reagendar": outro dia, horário ou profissional. Numa série, só este dia ou a série deste dia em diante.
+function painelReagendar(agendamento, data) {
+  const repete = agendamento.repeticao.frequencia !== "nenhuma";
+  const area = el("form", { class: "recorrencia", hidden: true, novalidate: true });
+  const abrir = el("button", { type: "button", class: "botao botao--contorno botao--largo", "aria-expanded": "false" },
+    icone("relogio"), "Reagendar");
+  const profissional = el("select", { class: "entrada", "aria-label": "Profissional" }, opcoesProfissionais());
+  const dia = el("input", { class: "entrada", type: "date", min: hoje(), "aria-label": "Novo dia" });
+  const horario = el("select", { class: "entrada numeros", "aria-label": "Novo horário" });
+  const previa = el("p", { class: "recorrencia__previa numeros" });
+  const erro = el("p", { class: "campo__erro", role: "alert" });
+  const confirmar = el("button", { type: "submit", class: "botao botao--destaque botao--largo" }, "Confirmar novo horário");
+  profissional.value = agendamento.profissionalId;
+  dia.value = data >= hoje() ? data : hoje();
+
+  const escopo = () => area.querySelector('input[name="reEscopo"]:checked')?.value || "dia";
+  const atualizar = () => {
+    const simulado = estadoSemOcorrencia(agendamento, data, escopo());
+    const anterior = horario.value || agendamento.inicio;
+    const livres = dia.value
+      ? horariosLivres(simulado, { data: dia.value, duracao: agendamento.duracao, profissionalId: profissional.value }) : [];
+    horario.replaceChildren(...(livres.length
+      ? livres.map(item => el("option", { value: item, selected: item === anterior }, item))
+      : [el("option", { value: "" }, "Nenhum horário livre neste dia")]));
+    horario.disabled = confirmar.disabled = !livres.length;
+
+    let texto = "";
+    if (repete && escopo() === "serie" && horario.value) {
+      const restantes = restoDaSerie(agendamento, data);
+      const datas = datasDaSerie(dia.value, restantes === 1
+        ? { frequencia: "nenhuma" } : { frequencia: agendamento.repeticao.frequencia, vezes: restantes });
+      // Os dias já cancelados continuam cancelados na série nova (mesma conta do servidor).
+      const { frequencia } = agendamento.repeticao;
+      const atual = indiceDaOcorrencia(agendamento.data, frequencia, data);
+      const canceladas = new Set(agendamento.excecoes.filter(excecao => excecao > data).map(excecao =>
+        dataDaOcorrencia(dia.value, frequencia, indiceDaOcorrencia(agendamento.data, frequencia, excecao) - atual)));
+      const puladas = datasIndisponiveis(simulado, profissional.value,
+        datas.slice(1).filter(item => !canceladas.has(item)), minutos(horario.value), agendamento.duracao);
+      texto = (data > agendamento.data ? `Os atendimentos antes de ${formatarData(data)} ficam como estão. ` : "") +
+        (restantes == null ? "A série continua sem data para terminar." : `${restantes} ${restantes === 1 ? "atendimento" : "atendimentos"} no novo horário.`) +
+        textoPuladas(puladas).replace(" Ficou de fora:", " Vai ficar de fora:");
+    } else if (repete) {
+      texto = "Só este dia muda; a série continua no horário de sempre.";
+    }
+    previa.textContent = texto;
+    previa.hidden = !texto;
+  };
+
+  area.append(
+    repete ? el("div", { class: "chips", role: "radiogroup", "aria-label": "O que muda" },
+      [["dia", "Só este dia"], ["serie", "Toda a série"]].map(([valor, rotulo], indice) => el("label", { class: "chip" },
+        el("input", { type: "radio", name: "reEscopo", value: valor, checked: indice === 0 }), rotulo))) : "",
+    el("label", { class: "campo" }, el("span", { class: "campo__rotulo" }, "Profissional"), profissional),
+    el("label", { class: "campo" }, el("span", { class: "campo__rotulo" }, "Dia"), dia),
+    el("label", { class: "campo" }, el("span", { class: "campo__rotulo" }, "Horário livre"), horario),
+    previa, erro, confirmar);
+  area.addEventListener("change", atualizar);
+  area.addEventListener("submit", evento => {
+    evento.preventDefault();
+    if (!horario.value) return;
+    enviando(area, async () => {
+      const pedido = reagendar(agendamento.id, {
+        data, novaData: dia.value, inicio: horario.value, profissionalId: profissional.value, escopo: escopo()
+      });
+      if (!(await resultado(pedido, comPuladas("Horário alterado."), erro))) return;
+      fecharDetalhe();
+      irPara(dia.value);
+    });
+  });
+
+  abrir.addEventListener("click", () => {
+    area.hidden = !area.hidden;
+    abrir.setAttribute("aria-expanded", String(!area.hidden));
+    if (!area.hidden) {
+      atualizar();
+      area.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+  });
+  return [abrir, area];
+}
+
 // "Tornar recorrente": vale para atendimento avulso de qualquer data (passado, hoje ou futuro).
 function painelRecorrencia(agendamento) {
   const area = el("div", { class: "recorrencia", hidden: true });
@@ -828,10 +945,14 @@ function painelRecorrencia(agendamento) {
     const primeira = inicioDaRecorrencia(agendamento, regra.frequencia);
     const datas = datasDaSerie(primeira, { ...regra, vezes: regra.vezes == null ? null : Math.max(2, regra.vezes || 2) });
     const lista = datas.slice(0, 4).map(data => formatarData(data, { weekday: "short", day: "2-digit", month: "2-digit" })).join(", ");
+    const conferir = primeira === agendamento.data ? datas.slice(1) : datas;
+    const puladas = datasIndisponiveis(estado, agendamento.profissionalId, conferir, minutos(agendamento.inicio),
+      agendamento.duracao, agendamento.id);
     previa.textContent =
       (primeira !== agendamento.data ? `Este já passou: a repetição começa em ${formatarData(primeira)}. ` : "") +
       (regra.frequencia === "mensal" ? `${descreverMensal(primeira)}: ` : "") +
-      lista + (regra.vezes == null || datas.length > 4 ? "…" : ".");
+      lista + (regra.vezes == null || datas.length > 4 ? "…" : ".") +
+      textoPuladas(puladas).replace(" Ficou de fora:", " Vai ficar de fora:");
   };
 
   const confirmar = el("button", {
@@ -841,7 +962,7 @@ function painelRecorrencia(agendamento) {
       const botao = evento.currentTarget;
       if (botao.disabled) return;
       botao.disabled = true;
-      const pronto = await resultado(tornarRecorrente(agendamento.id, ler()), "Pronto, o horário agora se repete.", erro);
+      const pronto = await resultado(tornarRecorrente(agendamento.id, ler()), comPuladas("Pronto, o horário agora se repete."), erro);
       botao.disabled = false;
       if (pronto) fecharDetalhe();
     }
@@ -945,7 +1066,7 @@ function atualizarHorariosNovo() {
   horarioDesejado = null;
   const quantidadeValida = repeticao.frequencia === "nenhuma" || repeticao.vezes == null || repeticao.vezes >= 2;
   const horarios = data && duracao && quantidadeValida
-    ? horariosLivres(estado, { data, repeticao, duracao, profissionalId }) : [];
+    ? horariosLivres(estado, { data, duracao, profissionalId }) : [];
   $("#novoHorario").replaceChildren(...(horarios.length
     ? horarios.map(horario => el("option", { value: horario, selected: horario === anterior }, horario))
     : [el("option", { value: "" }, duracao ? "Nenhum horário livre neste dia" : "Escolha um serviço")]));
@@ -953,8 +1074,12 @@ function atualizarHorariosNovo() {
   atualizarQuandoNovo();
 
   const regra = repeticao.frequencia === "mensal" && data ? ` · ${descreverMensal(data)}` : "";
+  const horario = $("#novoHorario").value;
+  const puladas = repete && quantidadeValida && horario
+    ? datasIndisponiveis(estado, profissionalId, datasDaSerie(data, repeticao).slice(1), minutos(horario), duracao) : [];
   $("#novoResumo").textContent = duracao
-    ? `${duracao} min · ${formatarMoeda(preco)}${repete ? " por atendimento" : ""}${regra}` : "";
+    ? `${duracao} min · ${formatarMoeda(preco)}${repete ? " por atendimento" : ""}${regra}.` +
+      textoPuladas(puladas).replace(" Ficou de fora:", " Vai ficar de fora:") : "";
 }
 
 // Janela de novo atendimento: vem com o dia e a hora tocados no quadro e o profissional da coluna
@@ -996,7 +1121,7 @@ formNovo.addEventListener("submit", evento => {
       inicio: valores.get("horario"),
       origem: "painel"
     });
-    if (!(await resultado(pedido, "Horário marcado.", $("#novoErro")))) return;
+    if (!(await resultado(pedido, comPuladas("Horário marcado."), $("#novoErro")))) return;
 
     $("#janelaNovo").close();
     irPara(dados.data);

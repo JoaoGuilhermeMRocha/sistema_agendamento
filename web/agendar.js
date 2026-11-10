@@ -198,6 +198,7 @@ function desenharDias() {
   escolha.data ??= vagas.dias.find(temHorario) || null;
 
   $("#dias").replaceChildren(...vagas.dias.slice(0, diasNaLista).map(botaoDia), botaoMaisDatas());
+  atualizarSetasDosDias();
   desenharCalendario();
   desenharHorarios(vagas.livres.get(escolha.data) || []);
 }
@@ -309,6 +310,27 @@ function desenharHorarios(horarios) {
         style: `--atraso: ${Math.min(indice, 12) * 18}ms`
       }, horario))))));
 }
+
+// Setas da faixa de dias (só aparecem com mouse): desativadas nas pontas e escondidas se tudo couber.
+function atualizarSetasDosDias() {
+  const faixa = $("#dias");
+  const resto = faixa.scrollWidth - faixa.clientWidth;
+  $(".faixa-dias").toggleAttribute("data-cabe", resto <= 1);
+  $('[data-rolar="-1"]').disabled = faixa.scrollLeft <= 1;
+  $('[data-rolar="1"]').disabled = faixa.scrollLeft >= resto - 1;
+}
+
+$(".faixa-dias").addEventListener("click", evento => {
+  const seta = evento.target.closest("[data-rolar]");
+  if (!seta || seta.disabled) return;
+  const faixa = $("#dias");
+  const suave = !matchMedia("(prefers-reduced-motion: reduce)").matches;
+  // Uma "página" de dias inteiros: a largura visível mais o vão até o próximo dia.
+  const passo = faixa.clientWidth + parseFloat(getComputedStyle(faixa).columnGap);
+  faixa.scrollBy({ left: Number(seta.dataset.rolar) * passo, behavior: suave ? "smooth" : "auto" });
+});
+$("#dias").addEventListener("scroll", atualizarSetasDosDias, { passive: true });
+new ResizeObserver(atualizarSetasDosDias).observe($("#dias"));
 
 $("#dias").addEventListener("click", evento => {
   if (evento.target.closest("#maisDatas")) {

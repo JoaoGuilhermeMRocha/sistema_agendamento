@@ -95,18 +95,28 @@ export function descreverRepeticao({ frequencia, vezes }, primeira = null) {
   return `${nome} · ${vezes == null ? "sem data para terminar" : `${vezes} atendimentos`}`;
 }
 
+// Data da ocorrência número "indice" (0 = a primeira) de uma série.
+export function dataDaOcorrencia(primeira, frequencia, indice) {
+  if (frequencia !== "mensal") return somarDias(primeira, indice * INTERVALO[frequencia]);
+  const base = daChave(primeira);
+  return dataMensal(base.getFullYear(), base.getMonth() + indice, regraMensal(primeira));
+}
+
+// O contrário de dataDaOcorrencia, para uma data que cai na regra.
+export function indiceDaOcorrencia(primeira, frequencia, data) {
+  if (frequencia !== "mensal") return Math.floor(diasEntre(primeira, data) / INTERVALO[frequencia]);
+  const [inicio, atual] = [daChave(primeira), daChave(data)];
+  return (atual.getFullYear() - inicio.getFullYear()) * 12 + atual.getMonth() - inicio.getMonth();
+}
+
 // Datas de uma série a partir da primeira. Sem número de vezes, vai até o horizonte configurado.
 export function datasDaSerie(primeira, { frequencia, vezes }) {
   if (frequencia === "nenhuma") return [primeira];
 
   const limite = somarDias(primeira, config.agenda.horizonteRecorrenciaDias);
-  const base = daChave(primeira);
-  const regra = regraMensal(primeira);
   const datas = [];
   for (let indice = 0; vezes == null || indice < vezes; indice++) {
-    const data = frequencia === "mensal"
-      ? dataMensal(base.getFullYear(), base.getMonth() + indice, regra)
-      : somarDias(primeira, indice * INTERVALO[frequencia]);
+    const data = dataDaOcorrencia(primeira, frequencia, indice);
     if (vezes == null && data > limite) break;
     datas.push(data);
   }
@@ -224,27 +234,39 @@ export function profissionalLivre(estado, profissionalId, data, inicio, duracao,
   );
 }
 
-// Com profissional definido, só ele serve. Sem preferência, escolhe quem está livre
-// em todas as datas e tem menos atendimentos no primeiro dia, para dividir os clientes.
+// Datas em que o profissional não pode atender nesse horário, com o motivo. Numa série,
+// elas são puladas (viram exceção) em vez de recusar a série inteira.
+export function datasIndisponiveis(estado, profissionalId, datas, inicio, duracao, ignorarId = null) {
+  return datas
+    .filter(data => !profissionalLivre(estado, profissionalId, data, inicio, duracao, ignorarId))
+    .map(data => ({ data, motivo: motivoIndisponivel(estado, profissionalId, data, inicio, duracao) || "Horário já ocupado" }));
+}
+
+// Com profissional definido, só ele serve. Sem preferência, escolhe entre os livres no primeiro
+// dia quem tem menos datas puladas na série e, depois, menos atendimentos nesse dia.
 export function escolherProfissional(estado, preferidoId, datas, inicio, duracao) {
   if (!datas.length) return null;
   const candidatos = preferidoId ? [preferidoId] : config.profissionais.map(pessoa => pessoa.id);
-  const livres = candidatos.filter(id =>
-    datas.every(data => profissionalLivre(estado, id, data, inicio, duracao)));
+  const livres = candidatos.filter(id => profissionalLivre(estado, id, datas[0], inicio, duracao));
   if (livres.length < 2) return livres[0] || null;
 
-  const ocupacao = id => atendimentosDoDia(estado, datas[0])
-    .filter(agendamento => agendamento.profissionalId === id).length;
-  return livres.sort((a, b) => ocupacao(a) - ocupacao(b))[0];
+  const peso = id => [
+    datasIndisponiveis(estado, id, datas.slice(1), inicio, duracao).length,
+    atendimentosDoDia(estado, datas[0]).filter(agendamento => agendamento.profissionalId === id).length
+  ];
+  return livres.sort((a, b) => {
+    const [pa, pb] = [peso(a), peso(b)];
+    return pa[0] - pb[0] || pa[1] - pb[1];
+  })[0];
 }
 
-export function horariosLivres(estado, { data, repeticao, duracao, profissionalId }) {
+// Só o dia conta: numa série, as outras datas que não derem são puladas.
+export function horariosLivres(estado, { data, duracao, profissionalId }) {
   if (!duracao) return [];
   const ids = profissionalId ? [profissionalId] : config.profissionais.map(pessoa => pessoa.id);
   const expedientes = ids.map(id => expedienteDoDia(estado, id, data)).filter(Boolean);
   if (!expedientes.length) return [];
 
-  const datas = datasDaSerie(data, repeticao);
   const primeiro = Math.min(...expedientes.map(item => minutos(item.inicio)));
   const ultimo = Math.max(...expedientes.map(item => minutos(item.fim)));
   // Além da grade de 15 em 15, o fim de cada atendimento do dia: encaixa logo depois sem deixar buraco.
@@ -254,7 +276,7 @@ export function horariosLivres(estado, { data, repeticao, duracao, profissionalI
     if (ids.includes(agendamento.profissionalId)) candidatos.add(minutos(agendamento.inicio) + agendamento.duracao);
   }
   return [...candidatos].sort((a, b) => a - b)
-    .filter(inicio => escolherProfissional(estado, profissionalId, datas, inicio, duracao))
+    .filter(inicio => escolherProfissional(estado, profissionalId, [data], inicio, duracao))
     .map(horaTexto);
 }
 

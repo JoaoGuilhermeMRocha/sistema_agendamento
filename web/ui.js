@@ -131,7 +131,8 @@ export function avisar(texto, tipo = "info") {
   void aviso.offsetWidth;
   aviso.classList.add("aviso--visivel");
   clearTimeout(temporizadorAviso);
-  temporizadorAviso = setTimeout(() => aviso.classList.remove("aviso--visivel"), 3200);
+  // Texto longo (ex.: datas puladas de uma série) fica mais tempo, para dar tempo de ler.
+  temporizadorAviso = setTimeout(() => aviso.classList.remove("aviso--visivel"), Math.max(3200, texto.length * 60));
 }
 
 // Ações destrutivas pedem um segundo toque no mesmo botão, sem janela de confirmação.

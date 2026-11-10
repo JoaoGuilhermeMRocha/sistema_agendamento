@@ -311,11 +311,141 @@ class PainelTests(ApiTestCase):
         _, outro = self.novo(nome="Bruno", data=segunda_data)
         self.assertTrue(outro["ok"])
 
-    def test_serie_recusa_se_uma_das_datas_estiver_ocupada(self):
+    def test_serie_pula_a_data_ocupada(self):
         terca = proxima(2)
-        self.novo(data=(terca + timedelta(days=14)).isoformat())
+        ocupada = (terca + timedelta(days=14)).isoformat()
+        self.novo(data=ocupada)
+        _, resposta = self.novo(nome="Bruno", repeticao={"frequencia": "semanal", "vezes": 4})
+        self.assertEqual(resposta["puladas"], [{"data": ocupada, "motivo": "Horário já ocupado"}])
+        self.assertEqual(resposta["agendamento"]["excecoes"], [ocupada])
+
+    def test_serie_pula_a_ausencia_do_profissional(self):
+        # O caso da Santiago: semanal a partir de um dia, com uma ausência duas semanas depois.
+        terca = proxima(2)
+        ausente = (terca + timedelta(days=14)).isoformat()
+        self.chamar("post", "/api/painel/ausencias", {"profissionalId": "santiago", "inicio": ausente, "fim": ausente})
+        _, resposta = self.novo(repeticao={"frequencia": "semanal", "vezes": None})
+        self.assertTrue(resposta["ok"])
+        self.assertEqual(resposta["puladas"], [{"data": ausente, "motivo": "Profissional ausente"}])
+        agendamento = Agendamento.objects.get()
+        self.assertEqual(list(agendamento.excecoes.values_list("data", flat=True)), [terca + timedelta(days=14)])
+
+    def test_serie_recusa_se_o_primeiro_dia_estiver_ocupado(self):
+        self.novo()
         status, resposta = self.novo(nome="Bruno", repeticao={"frequencia": "semanal", "vezes": 4})
         self.assertEqual((status, resposta["erro"]), (400, "Esse horário não está mais livre. Escolha outro."))
+
+    def test_tornar_recorrente_pula_a_ausencia(self):
+        terca = proxima(2)
+        _, resposta = self.novo()
+        id = resposta["agendamento"]["id"]
+        ausente = (terca + timedelta(days=7)).isoformat()
+        self.chamar("post", "/api/painel/ausencias", {"profissionalId": "santiago", "inicio": ausente, "fim": ausente})
+        _, resposta = self.chamar("post", f"/api/painel/agendamentos/{id}/recorrente",
+                                  {"repeticao": {"frequencia": "semanal", "vezes": 3}})
+        self.assertEqual(resposta["puladas"], [{"data": ausente, "motivo": "Profissional ausente"}])
+        self.assertEqual(resposta["agendamento"]["excecoes"], [ausente])
+
+    # Reagendar
+
+    def reagendar(self, id, data, nova_data, inicio="11:00", profissional="santiago", escopo="dia"):
+        return self.chamar("post", f"/api/painel/agendamentos/{id}/reagendar", {
+            "data": data.isoformat(), "novaData": nova_data.isoformat(), "inicio": inicio,
+            "profissionalId": profissional, "escopo": escopo})
+
+    def test_reagendar_avulso(self):
+        terca = proxima(2)
+        _, resposta = self.novo()
+        id = resposta["agendamento"]["id"]
+        _, resposta = self.reagendar(id, terca, terca + timedelta(days=1), profissional="damigo")
+        self.assertEqual(resposta["agendamento"]["id"], id)
+        self.assertEqual((resposta["agendamento"]["data"], resposta["agendamento"]["inicio"],
+                          resposta["agendamento"]["profissionalId"]),
+                         ((terca + timedelta(days=1)).isoformat(), "11:00", "damigo"))
+
+    def test_reagendar_no_proprio_horario_ou_logo_depois(self):
+        # O próprio atendimento não ocupa o horário para onde ele vai.
+        terca = proxima(2)
+        _, resposta = self.novo()
+        id = resposta["agendamento"]["id"]
+        _, resposta = self.reagendar(id, terca, terca, inicio="10:15")
+        self.assertTrue(resposta["ok"])
+
+    def test_reagendar_recusa_horario_ocupado_e_nao_muda_nada(self):
+        terca = proxima(2)
+        self.novo(nome="Bruno", inicio="11:00")
+        _, resposta = self.novo()
+        id = resposta["agendamento"]["id"]
+        status, resposta = self.reagendar(id, terca, terca)
+        self.assertEqual(status, 400)
+        self.assertIn("não está livre", resposta["erro"])
+        self.assertEqual(Agendamento.objects.get(pk=id).inicio.strftime("%H:%M"), "10:00")
+
+    def test_reagendar_so_um_dia_da_serie(self):
+        terca = proxima(2)
+        _, resposta = self.novo(repeticao={"frequencia": "semanal", "vezes": 4})
+        id = resposta["agendamento"]["id"]
+        segunda = terca + timedelta(days=7)
+        _, resposta = self.reagendar(id, segunda, segunda + timedelta(days=1))
+        self.assertNotEqual(resposta["agendamento"]["id"], id)
+        self.assertEqual(resposta["agendamento"]["repeticao"], {"frequencia": "nenhuma", "vezes": 1})
+        self.assertEqual(resposta["agendamento"]["preco"], 30.0)  # mantém o preço do original
+        serie = Agendamento.objects.get(pk=id)
+        self.assertEqual(list(serie.excecoes.values_list("data", flat=True)), [segunda])
+        self.assertEqual(serie.vezes, 4)
+
+    def test_reagendar_a_serie_a_partir_de_um_dia(self):
+        terca = proxima(2)
+        _, resposta = self.novo(repeticao={"frequencia": "semanal", "vezes": 5})
+        id = resposta["agendamento"]["id"]
+        self.chamar("post", f"/api/painel/agendamentos/{id}/cancelar", {"data": (terca + timedelta(days=21)).isoformat()})
+        segunda = terca + timedelta(days=7)
+        _, resposta = self.reagendar(id, segunda, segunda + timedelta(days=1), escopo="serie")
+        nova = resposta["agendamento"]
+        # A primeira fica; a partir da segunda, a série vai para quarta, com os 4 que faltavam.
+        self.assertEqual(Agendamento.objects.get(pk=id).ate, segunda)
+        self.assertEqual((nova["data"], nova["repeticao"]), ((segunda + timedelta(days=1)).isoformat(),
+                                                            {"frequencia": "semanal", "vezes": 4}))
+        # O dia cancelado continua cancelado, na quarta equivalente.
+        self.assertEqual(nova["excecoes"], [(terca + timedelta(days=22)).isoformat()])
+
+    def test_reagendar_a_serie_desde_o_primeiro_dia_muda_ela_mesma(self):
+        terca = proxima(2)
+        _, resposta = self.novo(repeticao={"frequencia": "quinzenal", "vezes": None})
+        id = resposta["agendamento"]["id"]
+        _, resposta = self.reagendar(id, terca, terca + timedelta(days=2), escopo="serie")
+        self.assertEqual(resposta["agendamento"]["id"], id)
+        self.assertEqual(resposta["agendamento"]["repeticao"], {"frequencia": "quinzenal", "vezes": None})
+        self.assertEqual(Agendamento.objects.count(), 1)
+
+    def test_reagendar_serie_encerrada_conta_so_o_que_faltava(self):
+        terca = proxima(2)
+        _, resposta = self.novo(repeticao={"frequencia": "semanal", "vezes": None})
+        id = resposta["agendamento"]["id"]
+        self.chamar("post", f"/api/painel/agendamentos/{id}/encerrar", {"data": (terca + timedelta(days=21)).isoformat()})
+        segunda = terca + timedelta(days=7)
+        _, resposta = self.reagendar(id, segunda, segunda, inicio="15:00", escopo="serie")
+        self.assertEqual(resposta["agendamento"]["repeticao"], {"frequencia": "semanal", "vezes": 2})
+        # Só sobrou uma: vira avulso.
+        _, resposta = self.reagendar(resposta["agendamento"]["id"], segunda + timedelta(days=7),
+                                     segunda + timedelta(days=7), inicio="16:00", escopo="serie")
+        self.assertEqual(resposta["agendamento"]["repeticao"], {"frequencia": "nenhuma", "vezes": 1})
+
+    def test_reagendar_serie_pula_a_ausencia(self):
+        terca = proxima(2)
+        _, resposta = self.novo(repeticao={"frequencia": "semanal", "vezes": 3})
+        id = resposta["agendamento"]["id"]
+        quarta = terca + timedelta(days=1)
+        ausente = (quarta + timedelta(days=7)).isoformat()
+        self.chamar("post", "/api/painel/ausencias", {"profissionalId": "santiago", "inicio": ausente, "fim": ausente})
+        _, resposta = self.reagendar(id, terca, quarta, escopo="serie")
+        self.assertEqual(resposta["puladas"], [{"data": ausente, "motivo": "Profissional ausente"}])
+
+    def test_reagendar_recusa_dia_em_que_o_atendimento_nao_acontece(self):
+        terca = proxima(2)
+        _, resposta = self.novo()
+        status, resposta = self.reagendar(resposta["agendamento"]["id"], terca + timedelta(days=1), terca)
+        self.assertEqual(status, 400)
 
     def test_tornar_recorrente(self):
         _, resposta = self.novo()

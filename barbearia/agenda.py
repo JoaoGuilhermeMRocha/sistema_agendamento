@@ -159,19 +159,29 @@ def data_mensal(base, meses_depois, regra):
     return date(ano, mes, 1 + avanco + (ordem - 1) * 7)
 
 
+def data_da_ocorrencia(primeira, frequencia, indice):
+    """Data da ocorrência número `indice` (0 = a primeira) de uma série."""
+    if frequencia == "mensal":
+        return data_mensal(primeira, indice, regra_mensal(primeira))
+    return primeira + timedelta(days=indice * INTERVALO_EM_DIAS[frequencia])
+
+
+def indice_da_ocorrencia(primeira, frequencia, data):
+    """O contrário de data_da_ocorrencia, para uma data que cai na regra."""
+    if frequencia == "mensal":
+        return (data.year - primeira.year) * 12 + data.month - primeira.month
+    return (data - primeira).days // INTERVALO_EM_DIAS[frequencia]
+
+
 def datas_da_serie(primeira, frequencia, vezes):
     """Datas de uma série a partir da primeira. Sem número de vezes, vai até o horizonte."""
     if frequencia == "nenhuma":
         return [primeira]
     limite = primeira + timedelta(days=parametro("horizonte_recorrencia_dias"))
-    regra = regra_mensal(primeira)
     datas = []
     indice = 0
     while vezes is None or indice < vezes:
-        if frequencia == "mensal":
-            data = data_mensal(primeira, indice, regra)
-        else:
-            data = primeira + timedelta(days=indice * INTERVALO_EM_DIAS[frequencia])
+        data = data_da_ocorrencia(primeira, frequencia, indice)
         if vezes is None and data > limite:
             break
         datas.append(data)
@@ -287,6 +297,16 @@ def profissional_livre(estado, profissional, data, inicio, duracao, ignorar_id=N
     )
 
 
+def datas_indisponiveis(estado, profissional, datas, inicio, duracao, ignorar_id=None):
+    """Datas em que o profissional não pode atender nesse horário, com o motivo. Numa série,
+    elas são puladas (viram exceção) em vez de recusar a série inteira."""
+    return [
+        (data, motivo_indisponivel(estado, profissional, data, inicio, duracao) or "Horário já ocupado")
+        for data in datas
+        if not profissional_livre(estado, profissional, data, inicio, duracao, ignorar_id)
+    ]
+
+
 def na_fila(expediente, inicio):
     """O horário começa dentro do período sequencial (fila) do expediente?"""
     return bool(expediente) and expediente.fila_inicio is not None and expediente.fila_inicio <= inicio < expediente.fila_fim
@@ -309,8 +329,9 @@ def primeiro_livre(estado, profissional, data, duracao):
 
 
 def escolher_profissional(estado, preferido, datas, inicio, duracao, fila=False):
-    """Com profissional definido, só ele serve. Sem preferência, escolhe quem está livre
-    em todas as datas e tem menos atendimentos no primeiro dia, para dividir os clientes.
+    """Com profissional definido, só ele serve. Sem preferência, escolhe entre os livres no
+    primeiro dia quem tem menos datas puladas na série e, depois, menos atendimentos nesse dia.
+    As outras datas da série não impedem: as que não derem são puladas.
 
     fila=True (agendamento pelo site): dentro do período sequencial do expediente, o profissional
     só serve no primeiro horário livre desse período. O painel marca em qualquer horário livre."""
@@ -324,26 +345,27 @@ def escolher_profissional(estado, preferido, datas, inicio, duracao, fila=False)
 
     livres = [
         profissional for profissional in candidatos
-        if all(profissional_livre(estado, profissional, data, inicio, duracao) for data in datas)
-        and not fora_da_vez(profissional)
+        if profissional_livre(estado, profissional, datas[0], inicio, duracao) and not fora_da_vez(profissional)
     ]
     if len(livres) < 2:
         return livres[0] if livres else None
     do_dia = atendimentos_do_dia(estado, datas[0])
-    return min(livres, key=lambda profissional: sum(item.profissional == profissional for item in do_dia))
+    return min(livres, key=lambda profissional: (
+        len(datas_indisponiveis(estado, profissional, datas[1:], inicio, duracao)),
+        sum(item.profissional == profissional for item in do_dia)))
 
 
-def horarios_livres(estado, data, duracao, profissional=None, frequencia="nenhuma", vezes=1, fila=False):
+def horarios_livres(estado, data, duracao, profissional=None, fila=False):
     """Horários de início (em minutos) em que dá para marcar: de 15 em 15 minutos e também no fim
     de cada atendimento do dia, para encaixar logo depois de um serviço de 20 min sem deixar buraco.
-    Com fila=True, no período sequencial de cada profissional entra só o primeiro horário livre."""
+    Com fila=True, no período sequencial de cada profissional entra só o primeiro horário livre.
+    Só o dia conta: numa série, as outras datas que não derem são puladas."""
     if not duracao:
         return []
     ids = [profissional] if profissional else estado.profissionais
     expedientes = [item for item in (expediente_do_dia(estado, id, data) for id in ids) if item]
     if not expedientes:
         return []
-    datas = datas_da_serie(data, frequencia, vezes)
     primeiro = min(item.inicio for item in expedientes)
     ultimo = max(item.fim for item in expedientes)
     candidatos = set(range(primeiro, ultimo - duracao + 1, parametro("intervalo_minutos")))
@@ -352,7 +374,7 @@ def horarios_livres(estado, data, duracao, profissional=None, frequencia="nenhum
         candidatos.update(inicio for id in ids if (inicio := primeiro_livre(estado, id, data, duracao)) is not None)
     return [
         inicio for inicio in sorted(candidatos)
-        if escolher_profissional(estado, profissional, datas, inicio, duracao, fila)
+        if escolher_profissional(estado, profissional, [data], inicio, duracao, fila)
     ]
 
 

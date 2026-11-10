@@ -100,6 +100,8 @@ export const carregar = async () => aplicarProfissionais(await pedir("GET", "pai
 
 export const cancelarData = (id, data) => pedir("POST", `painel/agendamentos/${id}/cancelar`, { data });
 export const tornarRecorrente = (id, repeticao) => pedir("POST", `painel/agendamentos/${id}/recorrente`, { repeticao });
+export const reagendar = (id, { data, novaData, inicio, profissionalId, escopo }) =>
+  pedir("POST", `painel/agendamentos/${id}/reagendar`, { data, novaData, inicio, profissionalId, escopo });
 export const encerrarRepeticao = (id, data) => pedir("POST", `painel/agendamentos/${id}/encerrar`, { data });
 export const salvarTelefone = (id, telefone) => pedir("PUT", `painel/agendamentos/${id}/telefone`, { telefone });
 

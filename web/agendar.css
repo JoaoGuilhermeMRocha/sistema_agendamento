@@ -335,6 +335,44 @@
 .dia[aria-pressed="true"] :is(.dia__semana, .dia__mes) { color: color-mix(in srgb, var(--cor-enfase-texto) 70%, transparent); }
 .dia:disabled { background: transparent; opacity: .45; cursor: not-allowed; }
 
+/* Setas da faixa: só com mouse, porque no toque o dedo já arrasta a faixa. */
+.faixa-dias__seta { display: none; }
+
+@media (hover: hover) and (pointer: fine) {
+  .faixa-dias {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+  }
+  /* Dias inteiros entre as setas: 7, ou 5 se a coluna for estreita demais para 7. */
+  .faixa-dias { --dias-visiveis: 7; container-type: inline-size; }
+  .faixa-dias .dias { margin: 0; padding-inline: 0; scroll-padding-inline: 0; scroll-snap-type: x mandatory; }
+  .faixa-dias .dia { flex-basis: calc((100% - (var(--dias-visiveis) - 1) * 8px) / var(--dias-visiveis)); }
+  .faixa-dias__seta {
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    margin-bottom: 10px; /* centra com os dias, descontando o respiro de baixo da faixa */
+    border: 1px solid var(--cor-linha);
+    border-radius: 50%;
+    background: var(--cor-superficie);
+    transition: transform .18s var(--mola), opacity .2s, border-color .2s;
+  }
+  .faixa-dias__seta:hover:not(:disabled) { border-color: var(--cor-linha-forte); }
+  .faixa-dias__seta:active:not(:disabled) { transform: scale(.92); }
+  .faixa-dias__seta:disabled { opacity: .3; cursor: not-allowed; }
+  .faixa-dias[data-cabe] { display: block; }
+  .faixa-dias[data-cabe] .faixa-dias__seta { display: none; }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  @container (max-width: 580px) {
+    .dias { --dias-visiveis: 5; }
+  }
+}
+
 /* 16º quadradinho: abre o calendário com o resto das datas */
 .dia--mais { flex-basis: 84px; align-content: center; border-style: dashed; color: var(--cor-destaque-forte); }
 .dia--mais > .icone { width: 22px; height: 22px; }

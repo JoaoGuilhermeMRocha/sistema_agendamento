@@ -84,7 +84,11 @@
               <p id="t-horario-ajuda">Toque no dia e depois no horário.</p>
             </div>
           </header>
-          <div id="dias" class="dias" role="group" aria-label="Dias"></div>
+          <div class="faixa-dias">
+            <button type="button" class="faixa-dias__seta" data-rolar="-1" aria-label="Dias anteriores" aria-controls="dias"><span data-icone="voltar"></span></button>
+            <div id="dias" class="dias" role="group" aria-label="Dias"></div>
+            <button type="button" class="faixa-dias__seta" data-rolar="1" aria-label="Próximos dias" aria-controls="dias"><span data-icone="seta"></span></button>
+          </div>
           <div id="calendario" class="calendario" hidden></div>
           <div id="horarios" class="horarios" aria-live="polite"></div>
         </section>
