@@ -445,6 +445,7 @@ button.mini-calendario__dia:active { transform: scale(.92); }
 .quadro {
   --px-min: 1px;
   --coluna-horas: 40px;
+  --coluna-recolhida: 60px; /* faixa da agenda do colega; no computador, mais estreita */
   margin: 0 calc(var(--margem) * -1);
   overflow: hidden;
   border-block: 1px solid var(--cor-linha);
@@ -492,6 +493,36 @@ button.mini-calendario__dia:active { transform: scale(.92); }
 }
 .quadro__profissional .chip__cor { flex: none; }
 .quadro__dia--profissional .quadro__total { font-size: 12px; }
+button.quadro__dia {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--cor-linha);
+  border-left: 1px solid var(--cor-linha);
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+button.quadro__dia[aria-pressed="true"] { cursor: default; }
+/* Cabeçalho do colega recolhido: bolinha em cima, nome pequeno embaixo. */
+.quadro__dia--recolhida { padding-inline: 2px; color: var(--cor-texto-suave); }
+.quadro__dia--recolhida .quadro__profissional { flex-direction: column; gap: 3px; font-size: 12px; }
+.quadro__dia--recolhida .quadro__profissional > span:last-child { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+
+/* Faixa do colega: mais escura, sem rótulos, com os atendimentos como barras na cor dele. */
+.quadro__coluna--recolhida {
+  background-color: color-mix(in srgb, var(--cor-fundo) 35%, transparent);
+  border-left-style: dashed;
+}
+.bloco.bloco--barra {
+  padding: 0;
+  border-left: 0;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--cor-prof) 70%, var(--cor-superficie-2));
+  box-shadow: none;
+  pointer-events: none;
+}
+.bloco.bloco--barra.bloco--conflito { background: var(--cor-perigo); }
 
 .quadro__horas { position: relative; height: calc(var(--minutos) * var(--px-min)); }
 
@@ -664,6 +695,8 @@ button.mini-calendario__dia:active { transform: scale(.92); }
 
 @media (hover: hover) {
   .bloco:hover { z-index: 2; box-shadow: var(--sombra-2); }
+  .quadro__coluna--recolhida:hover { background-color: color-mix(in srgb, var(--cor-destaque) 10%, transparent); }
+  button.quadro__dia--recolhida:hover { color: var(--cor-texto); }
   button.mini-calendario__semana:hover:not([aria-pressed="true"]),
   button.mini-calendario__dia:hover:not([aria-pressed="true"]),
   .dias__dia:hover:not([aria-pressed="true"]) { background: var(--cor-superficie-2); }
@@ -714,6 +747,7 @@ button.mini-calendario__dia:active { transform: scale(.92); }
 
 @media (min-width: 900px) {
   body[data-aba="agenda"] .painel { max-width: 1480px; }
+  .quadro { --coluna-recolhida: 22px; }
   .secao__topo { grid-template-columns: 1fr auto; align-items: end; }
   .secao__topo .chips--rolagem { margin: 0; padding: 2px; }
 

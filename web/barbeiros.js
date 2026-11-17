@@ -62,7 +62,10 @@ async function carregarPainel() {
 
 let estado = await carregarPainel();
 const visao = {
-  filtro: null,
+  // Profissional com a agenda aberta (coluna larga); os colegas ficam numa faixa estreita ao lado.
+  // Começa com quem entrou; o administrador começa com o primeiro.
+  aberto: config.profissionais.some(pessoa => pessoa.id === estado.eu.profissionalId)
+    ? estado.eu.profissionalId : config.profissionais[0].id,
   // Dia escolhido: no celular a agenda mostra só ele; no computador, a semana dele.
   dia: hoje(),
   // Para que lado o quadro desliza ao trocar de dia ou de semana (-1, 0 ou 1).
@@ -136,7 +139,8 @@ function abrirAba(nome) {
 
 window.addEventListener("hashchange", () => abrirAba(location.hash.slice(1)));
 
-/* Agenda: no computador, a semana em colunas; no celular, um dia, com uma coluna por profissional */
+/* Agenda: no computador, a semana em colunas; no celular, um dia. Em cada dia, uma coluna por profissional:
+   a de quem está aberto é larga, a dos colegas é uma faixa estreita que abre com um toque. */
 
 const DIAS_CURTOS = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
 const CELULAR = matchMedia("(max-width: 899px)");
@@ -148,11 +152,10 @@ const ROTULOS_INDISPONIVEL = {
 };
 
 const agoraEmMinutos = () => new Date().getHours() * 60 + new Date().getMinutes();
-const idsDoFiltro = () => visao.filtro ? [visao.filtro] : config.profissionais.map(pessoa => pessoa.id);
 const semanaEscolhida = () => inicioDaSemana(visao.dia);
 const diasDaSemana = () => Array.from({ length: 7 }, (_, indice) => somarDias(semanaEscolhida(), indice));
-const doFiltro = agendamento => !visao.filtro || agendamento.profissionalId === visao.filtro;
-const doDia = data => atendimentosDoDia(estado, data).filter(doFiltro);
+// Contagens, lista e conflitos da faixa de opções são de quem está aberto.
+const doDia = data => atendimentosDoDia(estado, data).filter(item => item.profissionalId === visao.aberto);
 const daColuna = coluna => atendimentosDoDia(estado, coluna.data).filter(item => coluna.ids.includes(item.profissionalId));
 // O servidor manda o valor só dos atendimentos de quem está logado: nos dos colegas, preco vem null.
 // Mudar o valor também é só do próprio atendimento (o servidor confere).
@@ -163,20 +166,28 @@ const textoDoPreco = valor => valor.toFixed(2).replace(".", ",");
 const somaDosValores = atendimentos => atendimentos.reduce((soma, item) => soma + (item.preco ?? 0), 0);
 const temValor = atendimentos => atendimentos.some(item => item.preco != null);
 
-// Cada coluna do quadro é um dia e os profissionais que ela mostra.
-const colunasDoQuadro = () => visaoDiaria()
-  ? idsDoFiltro().map(id => ({ data: visao.dia, ids: [id] }))
-  : diasDaSemana().map(data => ({ data, ids: idsDoFiltro() }));
+// Cada coluna do quadro é um dia e um profissional; as dos colegas vêm recolhidas. No computador, dia em
+// que ninguém trabalha nem tem atendimento vira uma coluna só, estreita (fechada).
+function colunasDoQuadro() {
+  const ids = config.profissionais.map(pessoa => pessoa.id);
+  const diaria = visaoDiaria();
+  return (diaria ? [visao.dia] : diasDaSemana()).flatMap(data => {
+    const fechado = !diaria && ids.every(id => diaFechado(estado, data, id)) && !atendimentosDoDia(estado, data).length;
+    return fechado
+      ? [{ data, ids, fechada: true }]
+      : ids.map(id => ({ data, ids: [id], recolhida: id !== visao.aberto }));
+  });
+}
 const iconeDeServico = nome => icone(nome, `icone icone-servico icone-servico--${nome}`);
 const pxPorMinuto = () => parseFloat(getComputedStyle($("#quadro")).getPropertyValue("--px-min")) || 1.6;
 
-// Filtro de profissional: um seletor deslizante (Todos, um, outro). O cursor anda até a opção escolhida;
-// dá para tocar, arrastar ou usar as setas do teclado.
-const OPCOES_DO_FILTRO = [{ id: null, nome: "Todos" }, ...config.profissionais];
+// Qual agenda fica aberta: um seletor deslizante com os profissionais. O cursor anda até a opção escolhida;
+// dá para tocar, arrastar ou usar as setas do teclado. Tocar na faixa estreita de um colega faz o mesmo.
+const OPCOES_DO_FILTRO = config.profissionais;
 
 function escolherFiltro(id, focar = false) {
-  if (visao.filtro !== id) {
-    visao.filtro = id;
+  if (visao.aberto !== id) {
+    visao.aberto = id;
     desenharAgenda();
   }
   if (focar) $(`#filtroAgenda [aria-checked="true"]`).focus();
@@ -184,6 +195,7 @@ function escolherFiltro(id, focar = false) {
 
 function montarFiltro() {
   const filtro = $("#filtroAgenda");
+  filtro.hidden = OPCOES_DO_FILTRO.length < 2;
   filtro.style.setProperty("--opcoes", OPCOES_DO_FILTRO.length);
   filtro.replaceChildren(
     el("span", { class: "seletor__cursor", "aria-hidden": "true" }),
@@ -193,7 +205,7 @@ function montarFiltro() {
       role: "radio",
       onclick: () => escolherFiltro(pessoa.id)
     },
-    pessoa.id && el("span", { class: "chip__cor", "data-profissional": indiceProfissional(pessoa.id) % 4 }),
+    el("span", { class: "chip__cor", "data-profissional": indiceProfissional(pessoa.id) % 4 }),
     el("span", { class: "seletor__nome" }, pessoa.nome))));
 
   const opcaoNoPonto = evento => {
@@ -215,7 +227,7 @@ function montarFiltro() {
   filtro.addEventListener("pointercancel", () => { arrastando = false; });
 
   filtro.addEventListener("keydown", evento => {
-    const atual = OPCOES_DO_FILTRO.findIndex(pessoa => pessoa.id === visao.filtro);
+    const atual = OPCOES_DO_FILTRO.findIndex(pessoa => pessoa.id === visao.aberto);
     const ultimo = OPCOES_DO_FILTRO.length - 1;
     const alvo = { ArrowLeft: atual - 1, ArrowUp: atual - 1, ArrowRight: atual + 1, ArrowDown: atual + 1, Home: 0, End: ultimo }[evento.key];
     if (alvo === undefined) return;
@@ -225,7 +237,7 @@ function montarFiltro() {
 }
 
 function desenharFiltro() {
-  const escolhida = OPCOES_DO_FILTRO.findIndex(pessoa => pessoa.id === visao.filtro);
+  const escolhida = OPCOES_DO_FILTRO.findIndex(pessoa => pessoa.id === visao.aberto);
   $("#filtroAgenda").style.setProperty("--escolhida", escolhida);
   $("#filtroAgenda").querySelectorAll(".seletor__opcao").forEach((opcao, indice) => {
     opcao.setAttribute("aria-checked", String(indice === escolhida));
@@ -337,7 +349,7 @@ function desenharDias() {
     const quantos = doDia(data).length;
     const classes = ["dias__dia"];
     if (data === hoje()) classes.push("dias__dia--hoje");
-    if (diaFechado(estado, data, visao.filtro) && !quantos) classes.push("dias__dia--fechado");
+    if (diaFechado(estado, data, visao.aberto) && !quantos) classes.push("dias__dia--fechado");
     if (temConflito(data)) classes.push("dias__dia--conflito");
     return el("button", {
       type: "button",
@@ -374,14 +386,14 @@ function faixaDoQuadro(colunas) {
 }
 
 // Trechos em que ninguém da coluna atende: fora do expediente, pausa, folga, ausência ou bloqueio.
-function trechosIndisponiveis(coluna, faixa) {
+function trechosIndisponiveis(coluna, faixa, comRotulo = true) {
   const passo = config.agenda.intervaloMinutos;
   const trechos = [];
   for (let inicio = faixa.inicio; inicio < faixa.fim; inicio += passo) {
     const motivos = coluna.ids.map(id => motivoIndisponivel(estado, id, coluna.data, inicio, passo));
     if (motivos.some(motivo => !motivo)) continue;
     const motivo = motivos.every(item => item === motivos[0]) ? motivos[0] : "";
-    const rotulo = motivo.startsWith("Bloqueio: ") ? motivo.slice(10) : ROTULOS_INDISPONIVEL[motivo] ?? "";
+    const rotulo = !comRotulo ? "" : motivo.startsWith("Bloqueio: ") ? motivo.slice(10) : ROTULOS_INDISPONIVEL[motivo] ?? "";
     const anterior = trechos.at(-1);
     if (anterior && anterior.fim === inicio && anterior.rotulo === rotulo) anterior.fim += passo;
     else trechos.push({ inicio, fim: inicio + passo, rotulo });
@@ -422,6 +434,21 @@ function distribuirEmFaixas(atendimentos) {
   }
   if (grupo.length) fecharGrupo();
   return itens;
+}
+
+// Na faixa estreita do colega, o atendimento é só uma barra na cor dele: mostra se está ocupado.
+// O toque vai para a coluna, que abre a agenda dele.
+function barraDoAtendimento(item, coluna, faixa) {
+  const { agendamento } = item;
+  const classes = ["bloco", "bloco--barra"];
+  if (coluna.data >= hoje() && conflitoDoAtendimento(estado, agendamento, coluna.data)) classes.push("bloco--conflito");
+  if (coluna.data < hoje() || (coluna.data === hoje() && item.fim <= agoraEmMinutos())) classes.push("bloco--passado");
+  return el("span", {
+    class: classes.join(" "),
+    "aria-hidden": "true",
+    "data-profissional": indiceProfissional(agendamento.profissionalId) % 4,
+    style: `--inicio: ${item.inicio - faixa.inicio}; --duracao: ${agendamento.duracao}; --faixa: ${item.faixa}; --faixas: ${item.faixas}`
+  });
 }
 
 function blocoDoAtendimento(item, coluna, faixa) {
@@ -466,32 +493,39 @@ function blocoDoAtendimento(item, coluna, faixa) {
 }
 
 function colunaDoQuadro(coluna, faixa, fechada) {
-  const { data } = coluna;
+  const { data, recolhida } = coluna;
   const agora = agoraEmMinutos();
   const classes = ["quadro__coluna"];
   if (data < hoje()) classes.push("quadro__coluna--passado");
   if (fechada) classes.push("quadro__coluna--fechada");
+  if (recolhida) classes.push("quadro__coluna--recolhida");
+  const atendimentos = daColuna(coluna);
   return el("div", {
     class: classes.join(" "),
     "data-dia": data,
     // Coluna de um profissional só: o horário livre tocado já abre com ele escolhido.
     "data-profissional-id": coluna.ids.length === 1 ? coluna.ids[0] : null,
+    "data-profissional": recolhida ? indiceProfissional(coluna.ids[0]) % 4 : null,
+    title: recolhida ? `${nomeProfissional(coluna.ids[0])}: ${atendimentos.length || "nenhum"} ` +
+      `${atendimentos.length === 1 ? "atendimento" : "atendimentos"}. ${matchMedia("(hover: hover)").matches ? "Clique" : "Toque"} para abrir` : null,
     style: `--minutos: ${faixa.fim - faixa.inicio}`
   },
-  trechosIndisponiveis(coluna, faixa).map(trecho => el("div", {
+  trechosIndisponiveis(coluna, faixa, !recolhida).map(trecho => el("div", {
     class: "quadro__fechado",
     style: `--inicio: ${trecho.inicio - faixa.inicio}; --duracao: ${trecho.fim - trecho.inicio}`
   }, trecho.rotulo && el("span", {}, trecho.rotulo))),
   data === hoje() && agora > faixa.inicio && agora < faixa.fim &&
     el("div", { class: "quadro__agora", style: `--inicio: ${agora - faixa.inicio}` }),
-  distribuirEmFaixas(daColuna(coluna)).map(item => blocoDoAtendimento(item, coluna, faixa)));
+  distribuirEmFaixas(atendimentos).map(item => recolhida
+    ? barraDoAtendimento(item, coluna, faixa) : blocoDoAtendimento(item, coluna, faixa)));
 }
 
-function cabecalhoDoDia(data, atendimentos, fechada) {
+// No computador, o cabeçalho do dia cobre as colunas dos profissionais dele (colunas = quantas).
+function cabecalhoDoDia(data, atendimentos, fechada, colunas) {
   const classes = ["quadro__dia"];
   if (data === hoje()) classes.push("quadro__dia--hoje");
   if (fechada) classes.push("quadro__dia--fechado");
-  return el("div", { class: classes.join(" ") },
+  return el("div", { class: classes.join(" "), style: `grid-column: span ${colunas}` },
     el("span", { class: "quadro__semana" }, DIAS_CURTOS[daChave(data).getDay()]),
     el("strong", { class: "quadro__numero numeros" }, daChave(data).getDate()),
     el("span", { class: "quadro__total numeros" }, atendimentos.length
@@ -499,27 +533,38 @@ function cabecalhoDoDia(data, atendimentos, fechada) {
         ? el("span", { class: "quadro__valor" }, ` · ${formatarMoeda(somaDosValores(atendimentos))}`) : ""] : ""));
 }
 
-function cabecalhoDoProfissional(id, atendimentos, estreita) {
-  return el("div", { class: `quadro__dia quadro__dia--profissional${estreita ? " quadro__dia--fechado" : ""}` },
+// No celular, o cabeçalho é o nome do profissional; no do colega (recolhido), tocar abre a agenda dele.
+function cabecalhoDoProfissional(id, atendimentos, recolhida) {
+  return el("button", {
+    type: "button",
+    class: `quadro__dia quadro__dia--profissional${recolhida ? " quadro__dia--recolhida" : ""}`,
+    "aria-pressed": String(!recolhida),
+    "aria-label": recolhida ? `Abrir a agenda de ${nomeProfissional(id)}` : `Agenda de ${nomeProfissional(id)}, aberta`,
+    onclick: () => escolherFiltro(id)
+  },
     el("span", { class: "quadro__profissional" },
-      el("span", { class: "chip__cor", "data-profissional": indiceProfissional(id) % 4 }), nomeProfissional(id)),
+      el("span", { class: "chip__cor", "data-profissional": indiceProfissional(id) % 4 }), el("span", {}, nomeProfissional(id))),
+    // Na coluna estreita só cabe a quantidade.
     el("span", { class: "quadro__total numeros" }, atendimentos.length
-      ? `${atendimentos.length}${temValor(atendimentos) ? ` · ${formatarMoeda(somaDosValores(atendimentos))}` : ""}` : ""));
+      ? `${atendimentos.length}${!recolhida && temValor(atendimentos) ? ` · ${formatarMoeda(somaDosValores(atendimentos))}` : ""}` : ""));
 }
 
 function desenharQuadro() {
   const colunas = colunasDoQuadro();
   const faixa = faixaDoQuadro(colunas);
-  const fechadas = colunas.map(coluna =>
-    coluna.ids.every(id => diaFechado(estado, coluna.data, id)) && !daColuna(coluna).length);
-  // Coluna sem expediente fica só com a largura do cabeçalho. Se todas estão fechadas, dividem o espaço.
-  const todasFechadas = fechadas.every(Boolean);
-  const larguras = fechadas.map(fechada => fechada && !todasFechadas ? "max-content" : "minmax(0, 1fr)");
-  const estreita = indice => fechadas[indice] && !todasFechadas;
+  // Dia fechado fica só com a largura do cabeçalho (se a semana toda está fechada, dividem o espaço).
+  // A faixa do colega tem largura fixa (--coluna-recolhida).
+  const todasFechadas = colunas.every(coluna => coluna.fechada);
+  const estreita = coluna => coluna.fechada && !todasFechadas;
+  const larguras = colunas.map(coluna => estreita(coluna) ? "max-content"
+    : coluna.recolhida ? "var(--coluna-recolhida)" : "minmax(0, 1fr)");
 
-  const cabecalhos = colunas.map((coluna, indice) => visaoDiaria()
-    ? cabecalhoDoProfissional(coluna.ids[0], daColuna(coluna), estreita(indice))
-    : cabecalhoDoDia(coluna.data, daColuna(coluna), estreita(indice)));
+  const cabecalhos = visaoDiaria()
+    ? colunas.map(coluna => cabecalhoDoProfissional(coluna.ids[0], daColuna(coluna), coluna.recolhida))
+    : diasDaSemana().map(data => {
+      const doDiaNoQuadro = colunas.filter(coluna => coluna.data === data);
+      return cabecalhoDoDia(data, doDia(data), estreita(doDiaNoQuadro[0]), doDiaNoQuadro.length);
+    });
 
   const horas = [];
   for (let hora = faixa.inicio; hora < faixa.fim; hora += 60) {
@@ -536,13 +581,13 @@ function desenharQuadro() {
   el("div", { class: "quadro__canto" }),
   cabecalhos,
   el("div", { class: "quadro__horas", style: `--minutos: ${faixa.fim - faixa.inicio}` }, horas),
-  colunas.map((coluna, indice) => colunaDoQuadro(coluna, faixa, estreita(indice))));
+  colunas.map(coluna => colunaDoQuadro(coluna, faixa, estreita(coluna))));
   grade.dataset.inicio = faixa.inicio;
   grade.dataset.minutos = faixa.fim - faixa.inicio;
 
-  $("#quadro").setAttribute("aria-label", visaoDiaria()
+  $("#quadro").setAttribute("aria-label", (visaoDiaria()
     ? `Atendimentos de ${formatarData(visao.dia, { weekday: "long", day: "numeric", month: "long" })}`
-    : "Atendimentos da semana");
+    : "Atendimentos da semana") + `, agenda de ${nomeProfissional(visao.aberto)} aberta`);
   $("#quadro").replaceChildren(grade);
   ajustarEscala();
 }
@@ -596,7 +641,7 @@ CELULAR.addEventListener("change", () => {
 // Horário livre sob o ponteiro, em passos da agenda. null = passado, fechado ou ocupado.
 function horarioLivreNoPonto(evento) {
   const coluna = evento.target.closest(".quadro__coluna");
-  if (!coluna || evento.target !== coluna) return null;
+  if (!coluna || evento.target !== coluna || coluna.classList.contains("quadro__coluna--recolhida")) return null;
   const passo = config.agenda.intervaloMinutos;
   const inicio = Number(coluna.parentElement.dataset.inicio) + Math.floor(evento.offsetY / pxPorMinuto() / passo) * passo;
   const data = coluna.dataset.dia;
@@ -605,6 +650,11 @@ function horarioLivreNoPonto(evento) {
 }
 
 $("#quadro").addEventListener("click", evento => {
+  const recolhida = evento.target.closest(".quadro__coluna--recolhida");
+  if (recolhida) {
+    escolherFiltro(recolhida.dataset.profissionalId);
+    return;
+  }
   const livre = horarioLivreNoPonto(evento);
   if (!livre) return;
   abrirNovo(livre.data, horaTexto(livre.inicio), livre.coluna.dataset.profissionalId);
@@ -655,8 +705,7 @@ function itemDaLista(agendamento, data) {
   el("span", { class: "lista-semana__hora numeros" }, agendamento.inicio),
   el("span", { class: "lista-semana__texto" },
     el("strong", {}, agendamento.cliente.nome),
-    el("span", {}, servicos.map(servico => servico.nome).join(" + "),
-      visao.filtro ? "" : ` · ${nomeProfissional(agendamento.profissionalId)}`)),
+    el("span", {}, servicos.map(servico => servico.nome).join(" + "))),
   el("span", { class: "lista-semana__simbolos" },
     conflito && icone("alerta", "icone icone--alerta"),
     agendamento.repeticao.frequencia !== "nenhuma" && icone("repetir"))));
@@ -703,7 +752,9 @@ function desenharLegenda() {
     ...servicosAtivos(estado).map(servico => el("span", {}, iconeDeServico(servico.icone), servico.nome)),
     el("span", {}, icone("alerta", "icone icone--alerta"), "Remarcar"),
     el("span", { class: "legenda__dica" }, icone("mais"),
-      `Horário livre: ${matchMedia("(hover: hover)").matches ? "clique" : "toque"} para marcar`));
+      `Horário livre: ${matchMedia("(hover: hover)").matches ? "clique" : "toque"} para marcar`),
+    config.profissionais.length > 1 ? el("span", { class: "legenda__dica" }, icone("seta"),
+      `Coluna estreita: ${matchMedia("(hover: hover)").matches ? "clique" : "toque"} para abrir a agenda do colega`) : "");
 }
 
 function desenharAgenda() {
@@ -1194,7 +1245,7 @@ function atualizarHorariosNovo() {
 // Janela de novo atendimento: vem com o dia e a hora tocados no quadro e o profissional da coluna
 // (ou do filtro).
 let horarioDesejado = null;
-function abrirNovo(data, horario = null, profissionalId = visao.filtro) {
+function abrirNovo(data, horario = null, profissionalId = visao.aberto) {
   formNovo.elements.nome.value = "";
   formNovo.elements.telefone.value = "";
   ajusteNovo.duracao = ajusteNovo.preco = false;
