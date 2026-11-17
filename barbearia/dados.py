@@ -22,6 +22,7 @@ from . import agenda
 from .models import ICONES_DE_SERVICO, Agendamento, Ausencia, Bloqueio, Excecao, Expediente, Produto, Profissional, Servico
 
 FREQUENCIAS = {"nenhuma", "semanal", "quinzenal", "trissemanal", "mensal"}
+PRECO_MAXIMO = Decimal("99999.99")  # cabe no DecimalField(max_digits=8)
 
 
 class Recusado(Exception):
@@ -55,6 +56,22 @@ def ler_valor(valor):
     except InvalidOperation:
         return None
     return numero.quantize(Decimal("0.01")) if numero.is_finite() else None
+
+
+def ler_duracao(valor, erro):
+    """Minutos de 5 em 5, até o máximo da agenda (os mesmos limites do cadastro de serviço)."""
+    passo = settings.AGENDA["passo_duracao_minutos"]
+    maxima = settings.AGENDA["duracao_maxima_minutos"]
+    if not isinstance(valor, int) or isinstance(valor, bool) or not passo <= valor <= maxima or valor % passo:
+        raise Recusado(erro)
+    return valor
+
+
+def ler_preco_do_atendimento(valor):
+    preco = ler_valor(valor)
+    if preco is None or not 0 <= preco <= PRECO_MAXIMO:
+        raise Recusado("Confira o valor do atendimento.")
+    return preco
 
 
 def so_digitos(texto):
@@ -126,7 +143,10 @@ def servicos_escolhidos(ids):
     return escolhidos
 
 
-def criar_agendamento(*, nome, telefone, servicos, profissional_id, data, inicio, repeticao=None, origem="cliente"):
+def criar_agendamento(*, nome, telefone, servicos, profissional_id, data, inicio, repeticao=None, origem="cliente",
+                      duracao=None, preco=None, ve_valor=None):
+    """duracao e preco: o barbeiro pode trocar a soma dos serviços pelo tempo e valor dele (só no painel).
+    ve_valor(profissional_id) diz se quem pede pode pôr o valor no atendimento desse profissional."""
     painel = origem == "painel"
     nome = str(nome or "").strip()
     telefone = so_digitos(telefone)
@@ -153,7 +173,10 @@ def criar_agendamento(*, nome, telefone, servicos, profissional_id, data, inicio
     if not painel and (data - hoje).days >= settings.AGENDA["dias_para_agendar"]:
         raise Recusado("Esse dia ainda não está aberto para agendamento.")
     datas = agenda.datas_da_serie(data, frequencia, vezes)
-    duracao = sum(servico.duracao for servico in escolhidos)
+    # Pelo site vale sempre a soma dos serviços.
+    duracao = ler_duracao(duracao, "Escolha a duração do atendimento.") if painel and duracao is not None \
+        else sum(servico.duracao for servico in escolhidos)
+    preco = ler_preco_do_atendimento(preco) if painel and preco is not None else None
 
     with transaction.atomic():
         _travar_profissionais([profissional_id] if profissional_id else ativos)
@@ -163,10 +186,12 @@ def criar_agendamento(*, nome, telefone, servicos, profissional_id, data, inicio
             estado, profissional_id or None, datas, agenda.minutos(inicio), duracao, fila=not painel)
         if not escolhido:
             raise Recusado("Esse horário não está mais livre. Escolha outro.")
+        if preco is not None and ve_valor and not ve_valor(escolhido):
+            raise Recusado("Só quem faz o atendimento pode mudar o valor dele.")
         puladas = agenda.datas_indisponiveis(estado, escolhido, datas[1:], agenda.minutos(inicio), duracao)
         agendamento = Agendamento.objects.create(
             cliente_nome=nome[:80], cliente_telefone=telefone, profissional_id=escolhido, data=data, inicio=inicio,
-            duracao=duracao, preco=sum(servico.preco for servico in escolhidos),
+            duracao=duracao, preco=sum(servico.preco for servico in escolhidos) if preco is None else preco,
             frequencia=frequencia, vezes=vezes, origem="painel" if painel else "cliente",
         )
         agendamento.servicos.set(escolhidos)
@@ -234,9 +259,9 @@ def tornar_recorrente(id, repeticao):
 
 def _copiar(original, **campos):
     """Novo agendamento com o cliente, os serviços, o preço, a duração e a origem do original."""
-    copia = Agendamento.objects.create(
-        cliente_nome=original.cliente_nome, cliente_telefone=original.cliente_telefone, duracao=original.duracao,
-        preco=original.preco, origem=original.origem, **campos)
+    copia = Agendamento.objects.create(**{
+        "cliente_nome": original.cliente_nome, "cliente_telefone": original.cliente_telefone,
+        "duracao": original.duracao, "preco": original.preco, "origem": original.origem, **campos})
     copia.servicos.set(original.servicos.all())
     return copia
 
@@ -323,6 +348,56 @@ def reagendar(id, *, data, nova_data, inicio, profissional_id, escopo="dia"):
             ignorar_id=alvo.id)
         _pular(alvo, puladas)
     return alvo, datas, puladas
+
+
+def ajustar(id, *, data, duracao, preco=None, escopo="dia", ve_valor=None):
+    """Troca o tempo e o valor de um atendimento (o cliente que demora mais ou menos que o normal).
+    Numa série, escopo "dia" muda só a ocorrência de `data` e "serie" muda essa e as seguintes.
+    preco None mantém o valor. Mais tempo só passa se couber em todas as datas que ainda vão acontecer."""
+    original = _buscar(Agendamento, id, "Agendamento não encontrado.")
+    data = ler_data(data, "Data inválida.")
+    duracao = ler_duracao(duracao, "Escolha a duração do atendimento.")
+    if preco is not None:
+        preco = ler_preco_do_atendimento(preco)
+        if ve_valor and not ve_valor(original.profissional_id):
+            raise Recusado("Só quem faz o atendimento pode mudar o valor dele.")
+    if escopo not in ("dia", "serie"):
+        raise Recusado("Escolha se muda só este dia ou a série.")
+    if not agenda.ocorre_em(_atendimento(original), data):
+        raise Recusado("Este atendimento não acontece nesse dia. Recarregue a página.")
+    campos = {"duracao": duracao, **({"preco": preco} if preco is not None else {})}
+
+    with transaction.atomic():
+        _travar_profissionais([original.profissional_id])
+        if original.frequencia == "nenhuma":
+            alvo = original
+        elif escopo == "dia":
+            Excecao.objects.get_or_create(agendamento=original, data=data)
+            alvo = _copiar(original, data=data, inicio=original.inicio, profissional_id=original.profissional_id,
+                           frequencia="nenhuma", vezes=1)
+        else:
+            alvo, _ = _mover_serie(original, data, data, original.inicio, original.profissional_id)
+        for campo, valor in campos.items():
+            setattr(alvo, campo, valor)
+        alvo.save(update_fields=list(campos))
+
+        # O que já passou não precisa caber (o barbeiro pode acertar o tempo depois do atendimento).
+        estado = agenda.carregar_estado()
+        inicio = agenda.minutos(alvo.inicio)
+        atendimento = _atendimento(alvo)
+        nao_cabe = [
+            (dia, agenda.motivo_indisponivel(estado, alvo.profissional_id, dia, inicio, duracao) or "Horário já ocupado")
+            for dia in agenda.datas_da_serie(alvo.data, alvo.frequencia, alvo.vezes)
+            if agenda.ocorre_em(atendimento, dia)
+            and (dia > estado.hoje or (dia == estado.hoje and inicio > estado.minuto_atual))
+            and not agenda.profissional_livre(estado, alvo.profissional_id, dia, inicio, duracao, ignorar_id=alvo.id)
+        ]
+        if nao_cabe:
+            dia, motivo = nao_cabe[0]
+            outras = f" e em mais {len(nao_cabe) - 1} {'data' if len(nao_cabe) == 2 else 'datas'}" if len(nao_cabe) > 1 else ""
+            raise Recusado(f"Com {duracao} min não cabe em {dia:%d/%m} às {alvo.inicio:%H:%M} ({motivo.lower()}){outras}. "
+                           "Diminua o tempo ou reagende.")
+    return alvo
 
 
 def salvar_telefone(id, telefone):

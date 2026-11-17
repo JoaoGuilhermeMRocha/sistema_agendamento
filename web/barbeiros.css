@@ -615,7 +615,7 @@ button.mini-calendario__dia:active { transform: scale(.92); }
 
 .bloco:active { transform: scale(.97); }
 .bloco--curto { padding-block: 2px; }
-.bloco--curto .bloco__hora, .bloco--mini .bloco__hora { display: none; }
+.bloco--curto .bloco__hora, .bloco--mini .bloco__hora, .bloco--apertado .bloco__hora { display: none; }
 .bloco--mini { justify-content: center; padding-block: 0; }
 .bloco--mini .bloco__linha { flex-wrap: nowrap; }
 .bloco--mini .bloco__nome { font-size: 11px; line-height: 1.1; }
@@ -630,10 +630,19 @@ button.mini-calendario__dia:active { transform: scale(.92); }
 /* Sem espaço para nome e símbolos lado a lado, os símbolos descem para a linha de baixo. */
 .bloco__linha { display: flex; flex-wrap: wrap; align-items: center; gap: 1px 4px; min-width: 0; }
 .bloco__nome { max-width: 100%; min-width: 0; overflow: hidden; font-size: 12px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+/* Bloco com altura de sobra: o nome inteiro quebra em até duas linhas, para o sobrenome aparecer. */
+.bloco--alto .bloco__nome {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
 .bloco__simbolos { display: flex; flex: none; gap: 2px; color: color-mix(in srgb, var(--cor-texto) 80%, transparent); }
 .bloco__simbolos .icone { width: 13px; height: 13px; stroke-width: 2; }
 .bloco__simbolos .icone--alerta { color: var(--cor-perigo); }
-.bloco__hora { overflow: hidden; color: var(--cor-texto-suave); font-size: 11px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.bloco__hora { flex: none; overflow: hidden; color: var(--cor-texto-suave); font-size: 11px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Símbolos de serviço: cada um com a sua cor (tokens --cor-icone-* no tema.css). O modificador
    pode ficar no próprio ícone ou num elemento em volta dele. */
@@ -668,8 +677,18 @@ button.mini-calendario__dia:active { transform: scale(.92); }
 
 @media (max-width: 899px) {
   body[data-aba="agenda"] .painel { padding-top: 12px; }
-  /* Visão do dia: a coluna é larga, então o bloco ganha letra maior. */
+  /* Visão do dia: a coluna é larga, então o bloco ganha letra maior. Os símbolos ficam ao lado do nome,
+     que usa até duas linhas para o sobrenome aparecer. */
   .bloco__nome { font-size: 13px; }
+  .bloco:not(.bloco--curto, .bloco--mini) .bloco__linha { flex-wrap: nowrap; align-items: flex-start; }
+  .bloco:not(.bloco--curto, .bloco--mini) .bloco__nome {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
   .bloco__simbolos .icone { width: 14px; height: 14px; }
 }
 
@@ -723,10 +742,15 @@ button.mini-calendario__dia:active { transform: scale(.92); }
 .formulario { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
 .formulario__grade { display: grid; gap: 14px; }
 .formulario__grade--dupla { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.formulario__grade--par { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .formulario__grade--servico { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .formulario__grade--servico > :first-child { grid-column: 1 / -1; }
 .formulario__resumo { color: var(--cor-texto-suave); font-weight: 600; }
 .formulario__resumo:empty { display: none; }
+
+/* Tempo ou valor trocados à mão: mostra a soma dos serviços e o botão para voltar a ela. */
+.ajuste { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; color: var(--cor-texto-suave); font-size: 14px; }
+.ajuste[hidden] { display: none; }
 
 fieldset.campo { margin: 0; padding: 0; border: 0; }
 fieldset.campo legend { margin-bottom: 8px; padding: 0; }

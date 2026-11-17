@@ -429,6 +429,22 @@
           <div id="novoServicos" class="chips"></div>
         </fieldset>
 
+        <!-- Começam com a soma dos serviços; o barbeiro troca quando o cliente demora mais ou menos. -->
+        <div class="formulario__grade formulario__grade--par">
+          <label class="campo">
+            <span class="campo__rotulo">Tempo</span>
+            <select name="duracao" id="novoDuracao" class="entrada numeros"></select>
+          </label>
+          <label class="campo" id="novoCampoValor">
+            <span class="campo__rotulo">Valor total (R$)</span>
+            <input name="preco" id="novoPreco" class="entrada numeros" inputmode="decimal" placeholder="0,00" autocomplete="off">
+          </label>
+        </div>
+        <div id="novoAjuste" class="ajuste" hidden>
+          <span id="novoAjusteTexto"></span>
+          <button id="novoPadrao" type="button" class="botao botao--contorno botao--pequeno">Usar a soma</button>
+        </div>
+
         <div class="formulario__grade">
           <label class="campo">
             <span class="campo__rotulo">Profissional</span>

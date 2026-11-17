@@ -370,6 +370,7 @@ def _novo_atendimento(request, corpo):
         nome=corpo.get("nome"), telefone=corpo.get("telefone"), servicos=corpo.get("servicos"),
         profissional_id=corpo.get("profissionalId"), data=corpo.get("data"), inicio=corpo.get("inicio"),
         repeticao=corpo.get("repeticao"), origem="painel",
+        duracao=corpo.get("duracao"), preco=corpo.get("preco"), ve_valor=lambda id: ve_valor(request, id),
     )
     return _serie_json(request, *resposta)
 
@@ -386,6 +387,13 @@ def _reagendar(request, corpo, id):
     return _serie_json(request, *dados.reagendar(
         id, data=corpo.get("data"), nova_data=corpo.get("novaData"), inicio=corpo.get("inicio"),
         profissional_id=corpo.get("profissionalId"), escopo=corpo.get("escopo", "dia")))
+
+
+def _ajustar(request, corpo, id):
+    agendamento = dados.ajustar(
+        id, data=corpo.get("data"), duracao=corpo.get("duracao"), preco=corpo.get("preco"),
+        escopo=corpo.get("escopo", "dia"), ve_valor=lambda profissional: ve_valor(request, profissional))
+    return {"agendamento": agendamento_json(agendamento, ve_valor(request, agendamento.profissional_id))}
 
 
 def _salvar_telefone(request, corpo, id):
@@ -466,6 +474,7 @@ cancelar = api(POST=_cancelar_data)
 recorrente = api(POST=_tornar_recorrente)
 reagendar = api(POST=_reagendar)
 encerrar = api(POST=_encerrar_repeticao)
+ajustar = api(POST=_ajustar)
 telefone = api(PUT=_salvar_telefone)
 expediente = api(PUT=_salvar_expediente)
 ausencias = api(POST=_criar_ausencia)

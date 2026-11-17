@@ -17,6 +17,7 @@ urlpatterns = [
     path("painel/agendamentos/<int:id>/recorrente", api.recorrente),
     path("painel/agendamentos/<int:id>/reagendar", api.reagendar),
     path("painel/agendamentos/<int:id>/encerrar", api.encerrar),
+    path("painel/agendamentos/<int:id>/ajustar", api.ajustar),
     path("painel/agendamentos/<int:id>/telefone", api.telefone),
     path("painel/expedientes/<slug:profissional>", api.expediente),
     path("painel/ausencias", api.ausencias),

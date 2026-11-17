@@ -9,7 +9,8 @@ import {
 import {
   ICONES_DE_SERVICO, aoMudar, apagarDadosDeTeste, cancelarData, carregar, carregarExemplo, criarAgendamento, criarAusencia,
   criarBloqueio, atualizarProduto, atualizarProfissional, atualizarServico, criarProduto, criarServico, encerrarRepeticao, entrar, removerAusencia,
-  reagendar, removerBloqueio, removerProduto, removerServico, sair, salvarExpediente, salvarTelefone, tornarRecorrente
+  ajustarAtendimento, reagendar, removerBloqueio, removerProduto, removerServico, sair, salvarExpediente, salvarTelefone,
+  tornarRecorrente
 } from "./dados.js";
 import {
   $, aplicarIcones, avisar, capitalizar, confirmarNoBotao, el, formatarTelefone, icone, linkWhatsApp,
@@ -154,6 +155,11 @@ const doFiltro = agendamento => !visao.filtro || agendamento.profissionalId === 
 const doDia = data => atendimentosDoDia(estado, data).filter(doFiltro);
 const daColuna = coluna => atendimentosDoDia(estado, coluna.data).filter(item => coluna.ids.includes(item.profissionalId));
 // O servidor manda o valor só dos atendimentos de quem está logado: nos dos colegas, preco vem null.
+// Mudar o valor também é só do próprio atendimento (o servidor confere).
+const podeMudarValor = profissionalId => estado.eu.administrador || estado.eu.profissionalId === profissionalId;
+// "1.250,50" -> "1250.50" (o servidor confere se é número). Vazio -> null.
+const lerPreco = texto => String(texto ?? "").trim() ? String(texto).replace(/\./g, "").replace(",", ".") : null;
+const textoDoPreco = valor => valor.toFixed(2).replace(".", ",");
 const somaDosValores = atendimentos => atendimentos.reduce((soma, item) => soma + (item.preco ?? 0), 0);
 const temValor = atendimentos => atendimentos.some(item => item.preco != null);
 
@@ -449,8 +455,8 @@ function blocoDoAtendimento(item, coluna, faixa) {
     onclick: () => abrirDetalhe(agendamento.id, data)
   },
   el("span", { class: "bloco__linha" },
-    // Na visão do dia a coluna é larga: cabe o nome inteiro.
-    el("strong", { class: "bloco__nome" }, visaoDiaria() ? agendamento.cliente.nome : agendamento.cliente.nome.split(" ")[0]),
+    // Nome inteiro: a barbearia diferencia os clientes de mesmo nome pelo sobrenome.
+    el("strong", { class: "bloco__nome" }, agendamento.cliente.nome),
     el("span", { class: "bloco__simbolos" },
       conflito && icone("alerta", "icone icone--alerta"),
       repete && icone("repetir"),
@@ -559,7 +565,15 @@ function ajustarEscala() {
     // Abaixo de duas linhas, nome e símbolos dividem uma linha só; abaixo de três, o horário sai.
     bloco.classList.toggle("bloco--mini", altura < 28);
     bloco.classList.toggle("bloco--curto", altura >= 28 && altura < 40);
+    // Com altura para duas linhas, o nome pode quebrar (o sobrenome diferencia clientes de mesmo nome).
+    bloco.classList.toggle("bloco--alto", altura >= 58);
+    bloco.classList.remove("bloco--apertado");
   }
+  // Horário que não coube inteiro (nome em duas linhas, símbolos na linha de baixo) sai do bloco; continua
+  // na dica do mouse e no detalhe. Lê tudo antes de escrever, para não recalcular o layout a cada bloco.
+  const apertados = [...quadro.querySelectorAll(".bloco:not(.bloco--curto, .bloco--mini)")]
+    .filter(bloco => bloco.scrollHeight > bloco.clientHeight + 1);
+  for (const bloco of apertados) bloco.classList.add("bloco--apertado");
 }
 
 let ajustePendente = false;
@@ -723,7 +737,7 @@ function abrirDetalhe(id, data) {
   const agendamento = estado.agendamentos.find(item => item.id === id);
   if (!agendamento) return;
 
-  const { nomes, duracao } = somarServicos(estado, agendamento.servicos);
+  const { nomes } = somarServicos(estado, agendamento.servicos);
   const profissional = nomeProfissional(agendamento.profissionalId);
   const fim = horaTexto(minutos(agendamento.inicio) + agendamento.duracao);
   const repete = agendamento.repeticao.frequencia !== "nenhuma";
@@ -754,7 +768,7 @@ function abrirDetalhe(id, data) {
       `${capitalizar(formatarData(data, { weekday: "long", day: "numeric", month: "long" }))} · ${agendamento.inicio}–${fim}`),
     el("h2", { id: "detalheTitulo", class: "detalhe__nome" }, agendamento.cliente.nome),
     el("dl", { class: "detalhe__lista" },
-      [["Serviços", `${nomes} · ${duracao} min`],
+      [["Serviços", `${nomes} · ${rotuloDaDuracao(agendamento.duracao)}`],
         ["Profissional", profissional],
         agendamento.preco != null && ["Valor", formatarMoeda(agendamento.preco)],
         ["WhatsApp", agendamento.cliente.telefone ? formatarTelefone(agendamento.cliente.telefone) : "Não informado"],
@@ -771,6 +785,7 @@ function abrirDetalhe(id, data) {
         }, icone("mensagem"), "Enviar lembrete no WhatsApp")
         : painelTelefone(agendamento, data),
       painelReagendar(agendamento, data),
+      painelAjuste(agendamento, data),
       repete ? "" : painelRecorrencia(agendamento),
       cancelar,
       encerrar,
@@ -921,6 +936,67 @@ function painelReagendar(agendamento, data) {
   return [abrir, area];
 }
 
+// "Ajustar tempo e valor": o cliente que demora mais ou menos que a soma dos serviços. Vale também
+// para o que já passou (acertar o valor cobrado). O valor só aparece no atendimento de quem está logado.
+function painelAjuste(agendamento, data) {
+  const repete = agendamento.repeticao.frequencia !== "nenhuma";
+  const comValor = agendamento.preco != null && podeMudarValor(agendamento.profissionalId);
+  const area = el("form", { class: "recorrencia", hidden: true, novalidate: true });
+  const abrir = el("button", { type: "button", class: "botao botao--contorno botao--largo", "aria-expanded": "false" },
+    icone("lapis"), comValor ? "Ajustar tempo e valor" : "Ajustar tempo");
+  const duracao = el("select", { class: "entrada numeros", "aria-label": "Tempo" }, opcoesDeDuracao(agendamento.duracao));
+  const preco = comValor ? el("input", {
+    class: "entrada numeros", inputmode: "decimal", placeholder: "0,00", autocomplete: "off",
+    value: textoDoPreco(agendamento.preco), "aria-label": "Valor total"
+  }) : null;
+  const soma = somarServicos(estado, agendamento.servicos);
+  const previa = el("p", { class: "recorrencia__previa numeros" });
+  const erro = el("p", { class: "campo__erro", role: "alert" });
+  const escopo = () => area.querySelector('input[name="ajEscopo"]:checked')?.value || "dia";
+
+  const atualizar = () => {
+    const fim = horaTexto(minutos(agendamento.inicio) + Number(duracao.value));
+    previa.textContent = `${agendamento.inicio}–${fim}. Os serviços somam ${soma.duracao} min` +
+      (comValor ? ` · ${formatarMoeda(soma.preco)}` : "") + "." +
+      (repete ? escopo() === "dia" ? " Só este dia muda." : " Muda este dia e os seguintes; os anteriores ficam como estão." : "");
+  };
+
+  area.append(
+    repete ? el("div", { class: "chips", role: "radiogroup", "aria-label": "O que muda" },
+      [["dia", "Só este dia"], ["serie", "Toda a série"]].map(([valor, rotulo], indice) => el("label", { class: "chip" },
+        el("input", { type: "radio", name: "ajEscopo", value: valor, checked: indice === 0 }), rotulo))) : "",
+    el("div", { class: "formulario__grade formulario__grade--par" },
+      el("label", { class: "campo" }, el("span", { class: "campo__rotulo" }, "Tempo"), duracao),
+      comValor ? el("label", { class: "campo" }, el("span", { class: "campo__rotulo" }, "Valor total (R$)"), preco) : ""),
+    previa, erro,
+    el("button", { type: "submit", class: "botao botao--destaque botao--largo" }, "Salvar"));
+  area.addEventListener("change", atualizar);
+  area.addEventListener("input", atualizar);
+  area.addEventListener("submit", evento => {
+    evento.preventDefault();
+    if (comValor && lerPreco(preco.value) == null) {
+      erro.textContent = "Informe o valor do atendimento.";
+      return;
+    }
+    enviando(area, async () => {
+      const pedido = ajustarAtendimento(agendamento.id, {
+        data, duracao: Number(duracao.value), preco: comValor ? lerPreco(preco.value) : null, escopo: escopo()
+      });
+      if (await resultado(pedido, "Atendimento ajustado.", erro)) fecharDetalhe();
+    });
+  });
+
+  abrir.addEventListener("click", () => {
+    area.hidden = !area.hidden;
+    abrir.setAttribute("aria-expanded", String(!area.hidden));
+    if (!area.hidden) {
+      atualizar();
+      area.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+  });
+  return [abrir, area];
+}
+
 // "Tornar recorrente": vale para atendimento avulso de qualquer data (passado, hoje ou futuro).
 function painelRecorrencia(agendamento) {
   const area = el("div", { class: "recorrencia", hidden: true });
@@ -1040,6 +1116,37 @@ function proximoDiaAberto(data) {
   return data;
 }
 
+// Tempo e valor seguem a soma dos serviços até o barbeiro mexer neles.
+const ajusteNovo = { duracao: false, preco: false };
+
+function tempoEValorNovo(servicos, profissionalId) {
+  const soma = somarServicos(estado, servicos);
+  const campoDuracao = $("#novoDuracao");
+  const campoPreco = $("#novoPreco");
+  const mostraValor = podeMudarValor(profissionalId);
+  $("#novoCampoValor").hidden = !mostraValor;
+  if (!mostraValor) ajusteNovo.preco = false;
+  if (!ajusteNovo.duracao) campoDuracao.replaceChildren(...opcoesDeDuracao(soma.duracao));
+  if (!ajusteNovo.preco) campoPreco.value = soma.lista.length ? textoDoPreco(soma.preco) : "";
+
+  const duracao = ajusteNovo.duracao ? Number(campoDuracao.value) : soma.duracao;
+  const digitado = lerPreco(campoPreco.value);
+  const preco = !ajusteNovo.preco ? soma.preco : digitado == null ? NaN : Number(digitado);
+  const mudou = soma.lista.length && (duracao !== soma.duracao || (mostraValor && preco !== soma.preco));
+  $("#novoAjuste").hidden = !mudou;
+  $("#novoAjusteTexto").textContent = mudou
+    ? `Os serviços somam ${soma.duracao} min${mostraValor ? ` · ${formatarMoeda(soma.preco)}` : ""}.` : "";
+  return { duracao, preco, soma };
+}
+
+for (const campo of ["#novoDuracao", "#novoPreco"]) {
+  $(campo).addEventListener("input", () => { ajusteNovo[campo === "#novoDuracao" ? "duracao" : "preco"] = true; });
+}
+$("#novoPadrao").addEventListener("click", () => {
+  ajusteNovo.duracao = ajusteNovo.preco = false;
+  atualizarHorariosNovo();
+});
+
 function lerFormNovo() {
   const valores = new FormData(formNovo);
   const frequencia = valores.get("frequencia");
@@ -1056,14 +1163,15 @@ function lerFormNovo() {
 function atualizarHorariosNovo() {
   travarComplementaresNovo();
   const { servicos, profissionalId, data, repeticao } = lerFormNovo();
-  const { duracao, preco } = somarServicos(estado, servicos);
+  const { duracao, preco } = tempoEValorNovo(servicos, profissionalId);
   const repete = repeticao.frequencia !== "nenhuma";
 
   $("#novoQuantidade").hidden = !repete;
   $("#novoVezes").disabled = $("#novoSemFim").checked;
 
+  // O horário tocado no quadro continua preferido até o barbeiro escolher outro: se não couber com a soma
+  // dos serviços, volta a aparecer quando ele diminui o tempo.
   const anterior = horarioDesejado ?? $("#novoHorario").value;
-  horarioDesejado = null;
   const quantidadeValida = repeticao.frequencia === "nenhuma" || repeticao.vezes == null || repeticao.vezes >= 2;
   const horarios = data && duracao && quantidadeValida
     ? horariosLivres(estado, { data, duracao, profissionalId }) : [];
@@ -1077,8 +1185,9 @@ function atualizarHorariosNovo() {
   const horario = $("#novoHorario").value;
   const puladas = repete && quantidadeValida && horario
     ? datasIndisponiveis(estado, profissionalId, datasDaSerie(data, repeticao).slice(1), minutos(horario), duracao) : [];
+  const valorValido = Number.isFinite(preco);
   $("#novoResumo").textContent = duracao
-    ? `${duracao} min · ${formatarMoeda(preco)}${repete ? " por atendimento" : ""}${regra}.` +
+    ? `${duracao} min${valorValido ? ` · ${formatarMoeda(preco)}` : ""}${repete ? " por atendimento" : ""}${regra}.` +
       textoPuladas(puladas).replace(" Ficou de fora:", " Vai ficar de fora:") : "";
 }
 
@@ -1088,6 +1197,7 @@ let horarioDesejado = null;
 function abrirNovo(data, horario = null, profissionalId = visao.filtro) {
   formNovo.elements.nome.value = "";
   formNovo.elements.telefone.value = "";
+  ajusteNovo.duracao = ajusteNovo.preco = false;
   $("#novoErro").textContent = "";
   $("#novoData").value = data;
   horarioDesejado = horario;
@@ -1106,6 +1216,7 @@ function atualizarQuandoNovo() {
     : "";
 }
 
+$("#novoHorario").addEventListener("change", () => { horarioDesejado = null; });
 formNovo.addEventListener("input", atualizarHorariosNovo);
 formNovo.addEventListener("change", atualizarHorariosNovo);
 
@@ -1119,7 +1230,10 @@ formNovo.addEventListener("submit", evento => {
       nome: valores.get("nome"),
       telefone: valores.get("telefone"),
       inicio: valores.get("horario"),
-      origem: "painel"
+      origem: "painel",
+      // Só manda o que o barbeiro mexeu; o resto o servidor soma pelos serviços.
+      duracao: ajusteNovo.duracao ? Number(valores.get("duracao")) : null,
+      preco: ajusteNovo.preco && podeMudarValor(dados.profissionalId) ? lerPreco(valores.get("preco")) : null
     });
     if (!(await resultado(pedido, comPuladas("Horário marcado."), $("#novoErro")))) return;
 
@@ -1307,12 +1421,17 @@ function rotuloDaDuracao(minutos) {
   return `${Math.floor(minutos / 60)}h${resto ? String(resto).padStart(2, "0") : ""} (${minutos} min)`;
 }
 
-function preencherDuracoes(atual = 30) {
+// De 5 em 5 min até o máximo (os limites do servidor), mais o valor atual se ele estiver fora da lista.
+function opcoesDeDuracao(atual) {
   const { passoDuracaoMinutos: passo, duracaoMaximaMinutos: maxima } = config.agenda;
   const opcoes = Array.from({ length: maxima / passo }, (_, indice) => (indice + 1) * passo);
-  if (!opcoes.includes(atual)) opcoes.push(atual);
-  $("#servicoDuracao").replaceChildren(...opcoes.sort((a, b) => a - b).map(valor =>
-    el("option", { value: valor, selected: valor === atual }, rotuloDaDuracao(valor))));
+  if (atual && !opcoes.includes(atual)) opcoes.push(atual);
+  return opcoes.sort((a, b) => a - b).map(valor =>
+    el("option", { value: valor, selected: valor === atual }, rotuloDaDuracao(valor)));
+}
+
+function preencherDuracoes(atual = 30) {
+  $("#servicoDuracao").replaceChildren(...opcoesDeDuracao(atual));
 }
 
 function desenharIconesDeServico() {

@@ -459,6 +459,114 @@ class PainelTests(ApiTestCase):
                                   {"repeticao": {"frequencia": "semanal", "vezes": 2}})
         self.assertEqual(resposta["erro"], "Este atendimento já se repete.")
 
+    # Tempo e valor do atendimento trocados pelo barbeiro
+
+    def test_tempo_e_valor_proprios_ao_marcar(self):
+        # O caso do Santiago: cabelo e barba (60 min) às 11:30 pega a pausa das 12h; com 30 min cabe.
+        status, resposta = self.novo(servicos=[CABELO, BARBA], inicio="11:30")
+        self.assertEqual(status, 400)
+        _, resposta = self.novo(servicos=[CABELO, BARBA], inicio="11:30", duracao=30, preco="50.00")
+        self.assertEqual((resposta["agendamento"]["duracao"], resposta["agendamento"]["preco"]), (30, 50.0))
+        # Sem os campos, vale a soma dos serviços.
+        _, resposta = self.novo(nome="Bruno", servicos=[CABELO, BARBA], inicio="14:00", duracao=None, preco=None)
+        self.assertEqual((resposta["agendamento"]["duracao"], resposta["agendamento"]["preco"]), (60, 55.0))
+
+    def test_tempo_e_valor_invalidos(self):
+        _, resposta = self.novo(duracao=7)
+        self.assertEqual(resposta["erro"], "Escolha a duração do atendimento.")
+        _, resposta = self.novo(duracao=245)
+        self.assertEqual(resposta["erro"], "Escolha a duração do atendimento.")
+        _, resposta = self.novo(preco="-1")
+        self.assertEqual(resposta["erro"], "Confira o valor do atendimento.")
+        _, resposta = self.novo(preco="trinta")
+        self.assertEqual(resposta["erro"], "Confira o valor do atendimento.")
+        # Cortesia vale.
+        _, resposta = self.novo(preco=0)
+        self.assertEqual(resposta["agendamento"]["preco"], 0.0)
+
+    def test_pelo_site_vale_sempre_a_soma_dos_servicos(self):
+        _, resposta = self.agendar(profissionalId="santiago", duracao=5, preco=1)
+        agendamento = Agendamento.objects.get(pk=resposta["agendamento"]["id"])
+        self.assertEqual((agendamento.duracao, float(agendamento.preco)), (30, 30.0))
+
+    def test_valor_do_colega_nao_muda(self):
+        _, resposta = self.novo(profissionalId="damigo", preco=10)
+        self.assertEqual(resposta["erro"], "Só quem faz o atendimento pode mudar o valor dele.")
+        _, resposta = self.novo(profissionalId="damigo", duracao=45)
+        self.assertEqual(resposta["agendamento"]["duracao"], 45)
+        id = resposta["agendamento"]["id"]
+        _, resposta = self.ajustar(id, proxima(2), 30, preco=10)
+        self.assertEqual(resposta["erro"], "Só quem faz o atendimento pode mudar o valor dele.")
+        _, resposta = self.ajustar(id, proxima(2), 30)
+        self.assertEqual(Agendamento.objects.get(pk=id).duracao, 30)
+        self.assertEqual(float(Agendamento.objects.get(pk=id).preco), 30.0)  # o valor ficou
+
+    def ajustar(self, id, data, duracao, preco=None, escopo="dia"):
+        return self.chamar("post", f"/api/painel/agendamentos/{id}/ajustar",
+                           {"data": data.isoformat(), "duracao": duracao, "preco": preco, "escopo": escopo})
+
+    def test_ajustar_avulso(self):
+        terca = proxima(2)
+        _, resposta = self.novo()
+        id = resposta["agendamento"]["id"]
+        _, resposta = self.ajustar(id, terca, 45, preco="40,5".replace(",", "."))
+        self.assertEqual((resposta["agendamento"]["duracao"], resposta["agendamento"]["preco"]), (45, 40.5))
+
+        # Mais tempo só se couber: às 11h já tem outro cliente.
+        self.novo(nome="Bruno", inicio="11:00")
+        status, resposta = self.ajustar(id, terca, 90)
+        self.assertEqual(status, 400)
+        self.assertIn("não cabe", resposta["erro"])
+        self.assertEqual(Agendamento.objects.get(pk=id).duracao, 45)  # nada mudou
+
+    def test_ajustar_um_dia_da_serie(self):
+        terca = proxima(2)
+        _, resposta = self.novo(repeticao={"frequencia": "semanal", "vezes": 3})
+        id = resposta["agendamento"]["id"]
+        segunda_data = terca + timedelta(days=7)
+        _, resposta = self.ajustar(id, segunda_data, 45, preco=45)
+        self.assertNotEqual(resposta["agendamento"]["id"], id)
+        self.assertEqual(resposta["agendamento"]["repeticao"]["frequencia"], "nenhuma")
+        self.assertEqual((resposta["agendamento"]["data"], resposta["agendamento"]["duracao"]), (segunda_data.isoformat(), 45))
+        original = Agendamento.objects.get(pk=id)
+        self.assertEqual((original.duracao, float(original.preco)), (30, 30.0))
+        self.assertEqual(list(original.excecoes.values_list("data", flat=True)), [segunda_data])
+
+    def test_ajustar_a_serie_a_partir_de_um_dia(self):
+        terca = proxima(2)
+        _, resposta = self.novo(repeticao={"frequencia": "semanal", "vezes": 3})
+        id = resposta["agendamento"]["id"]
+        segunda_data = terca + timedelta(days=7)
+        _, resposta = self.ajustar(id, segunda_data, 20, escopo="serie")
+        self.assertEqual(resposta["agendamento"]["repeticao"], {"frequencia": "semanal", "vezes": 2})
+        self.assertEqual(resposta["agendamento"]["duracao"], 20)
+        self.assertEqual(Agendamento.objects.get(pk=id).ate, segunda_data)
+
+        # Desde o primeiro dia, muda a própria série.
+        _, resposta = self.novo(nome="Bruno", inicio="15:00", repeticao={"frequencia": "semanal", "vezes": None})
+        id = resposta["agendamento"]["id"]
+        _, resposta = self.ajustar(id, terca, 45, escopo="serie")
+        self.assertEqual((resposta["agendamento"]["id"], resposta["agendamento"]["duracao"]), (id, 45))
+        self.assertIsNone(resposta["agendamento"]["repeticao"]["vezes"])
+
+    def test_ajustar_serie_recusa_se_nao_couber_numa_data_futura(self):
+        terca = proxima(2)
+        _, resposta = self.novo(repeticao={"frequencia": "semanal", "vezes": 3})
+        id = resposta["agendamento"]["id"]
+        self.novo(nome="Bruno", inicio="10:30", data=(terca + timedelta(days=14)).isoformat())
+        _, resposta = self.ajustar(id, terca, 45, escopo="serie")
+        self.assertIn(f"não cabe em {terca + timedelta(days=14):%d/%m}", resposta["erro"])
+        self.assertEqual(Agendamento.objects.get(pk=id).duracao, 30)
+
+    def test_ajustar_atendimento_que_ja_passou(self):
+        # Acertar o valor depois do atendimento: o que passou não precisa estar "livre".
+        ontem = timezone.localdate() - timedelta(days=1)
+        agendamento = Agendamento.objects.create(
+            cliente_nome="Ana", cliente_telefone="43999998888", profissional_id="santiago", data=ontem,
+            inicio="10:00", duracao=30, preco=30, origem="painel")
+        _, resposta = self.ajustar(agendamento.id, ontem, 50, preco=60)
+        self.assertEqual((resposta["agendamento"]["duracao"], resposta["agendamento"]["preco"]), (50, 60.0))
+
     def test_simular_mudanca_de_expediente_avisa_e_nao_grava(self):
         self.novo(inicio="16:00")
         dias = {"2": {"inicio": "09:00", "fim": "15:00", "pausaInicio": "", "pausaFim": ""}}

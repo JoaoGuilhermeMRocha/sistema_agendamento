@@ -73,11 +73,12 @@ export function horariosDisponiveis({ servicos, profissionalId, dias }) {
   return pedir("GET", `publico/horarios?${busca}`);
 }
 
-// Pelo site vira um atendimento único; só o painel cria repetição (o servidor garante).
-export function criarAgendamento({ nome, telefone, servicos, profissionalId, data, inicio, repeticao, origem }) {
+// Pelo site vira um atendimento único; só o painel cria repetição e muda tempo e valor (o servidor garante).
+// duracao e preco null: vale a soma dos serviços.
+export function criarAgendamento({ nome, telefone, servicos, profissionalId, data, inicio, repeticao, origem, duracao, preco }) {
   const corpo = { nome, telefone, servicos, profissionalId: profissionalId || null, data, inicio };
   return origem === "painel"
-    ? pedir("POST", "painel/agendamentos", { ...corpo, repeticao })
+    ? pedir("POST", "painel/agendamentos", { ...corpo, repeticao, duracao: duracao ?? null, preco: preco ?? null })
     : pedir("POST", "publico/agendamentos", corpo);
 }
 
@@ -103,6 +104,9 @@ export const tornarRecorrente = (id, repeticao) => pedir("POST", `painel/agendam
 export const reagendar = (id, { data, novaData, inicio, profissionalId, escopo }) =>
   pedir("POST", `painel/agendamentos/${id}/reagendar`, { data, novaData, inicio, profissionalId, escopo });
 export const encerrarRepeticao = (id, data) => pedir("POST", `painel/agendamentos/${id}/encerrar`, { data });
+// preco null mantém o valor. escopo: "dia" (só esta data) ou "serie" (esta e as seguintes).
+export const ajustarAtendimento = (id, { data, duracao, preco, escopo }) =>
+  pedir("POST", `painel/agendamentos/${id}/ajustar`, { data, duracao, preco: preco ?? null, escopo });
 export const salvarTelefone = (id, telefone) => pedir("PUT", `painel/agendamentos/${id}/telefone`, { telefone });
 
 /* Painel: expediente, ausências e bloqueios. Com simular, o servidor só devolve os conflitos que a mudança causaria. */
